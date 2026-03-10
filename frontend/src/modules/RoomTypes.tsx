@@ -79,6 +79,7 @@ export default function RoomTypes() {
   const [roomTypes, setRoomTypes] = useState<RoomType[]>([])
   const [hotels, setHotels] = useState<Hotel[]>([])
   const [selectedHotel, setSelectedHotel] = useState<number>(0)
+  const [showHotelManagement, setShowHotelManagement] = useState(false)
   const [assignedRoomTypeIds, setAssignedRoomTypeIds] = useState<Set<number>>(new Set())
   const [hotelPrices, setHotelPrices] = useState<Record<number, number>>({})
   const [priceDrafts, setPriceDrafts] = useState<Record<number, string>>({})
@@ -131,15 +132,18 @@ export default function RoomTypes() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
+  useEffect(() => {
+    if (selectedHotel === 0 && hotels.length > 0) {
+      setSelectedHotel(hotels[0].id)
+    }
+  }, [selectedHotel, hotels])
+
   const handleSave = async (form: any) => {
     try {
       if (editing) {
         await api.roomTypes.update(editing.id, form)
       } else {
-        const created = await api.roomTypes.create(form)
-        if (selectedHotel > 0) {
-          await api.roomTypes.assignToHotel(selectedHotel, created.id)
-        }
+        await api.roomTypes.create(form)
       }
       setShowModal(false)
       setEditing(null)
@@ -207,28 +211,23 @@ export default function RoomTypes() {
     <div>
       <div className="page-header">
         <h2>Tipos de Habitacion</h2>
-        <p>Catalogo global de tipos de habitacion y asignacion por hotel</p>
+        <p>Nomenclador global de tipos y gestion separada de asignaciones por hotel</p>
       </div>
 
       <div className="card">
         <div className="toolbar">
-          <div className="form-group" style={{ margin: 0, minWidth: 300 }}>
-            <select className="form-control" value={selectedHotel}
-                    onChange={e => setSelectedHotel(parseInt(e.target.value))}>
-              <option value={0}>Seleccionar hotel para gestionar asignaciones...</option>
-              {hotels.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
-            </select>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-primary" onClick={() => { setEditing(null); setShowModal(true) }}>
+              <Plus size={18} /> Nuevo Tipo
+            </button>
+            <button className="btn btn-secondary" onClick={() => setShowHotelManagement(prev => !prev)}>
+              {showHotelManagement ? 'Ocultar gestion por hotel' : 'Gestionar tipos por hotel'}
+            </button>
           </div>
-          <button className="btn btn-primary" onClick={() => { setEditing(null); setShowModal(true) }}>
-            <Plus size={18} /> Nuevo Tipo
-          </button>
-        </div>
-
-        {selectedHotel > 0 && (
-          <p className="inventory-subtle" style={{ marginBottom: 16 }}>
-            Asignaciones activas para: <strong>{selectedHotelName}</strong> (con precio especifico por hotel)
+          <p className="inventory-subtle" style={{ margin: 0 }}>
+            Esta tabla define el catalogo global (nombre, capacidad y precio base).
           </p>
-        )}
+        </div>
 
         {loading ? (
           <div className="loading">Cargando tipos de habitacion...</div>
@@ -242,54 +241,18 @@ export default function RoomTypes() {
                 <th>Nombre</th>
                 <th>Capacidad</th>
                 <th>Precio base</th>
-                <th>Precio hotel</th>
                 <th>Descripcion</th>
-                <th>Asignacion hotel</th>
                 <th>Acciones</th>
               </tr>
               </thead>
               <tbody>
               {roomTypes.map(rt => {
-                const assigned = assignedRoomTypeIds.has(rt.id)
-                const effectiveHotelPrice = hotelPrices[rt.id] ?? rt.basePrice
-                const draftValue = priceDrafts[rt.id] ?? String(effectiveHotelPrice)
                 return (
                   <tr key={rt.id}>
                     <td><strong>{rt.name}</strong></td>
                     <td>{rt.capacity} persona{rt.capacity > 1 ? 's' : ''}</td>
                     <td>{rt.basePrice.toFixed(2)} EUR</td>
-                    <td>
-                      {selectedHotel === 0 ? (
-                        <span className="inventory-subtle">Selecciona hotel</span>
-                      ) : !assigned ? (
-                        <span className="inventory-subtle">No asignado</span>
-                      ) : (
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                          <input
-                            className="form-control"
-                            style={{ width: 115, margin: 0, padding: '6px 8px' }}
-                            type="number"
-                            min="0.01"
-                            step="0.01"
-                            value={draftValue}
-                            onChange={e => handlePriceDraftChange(rt.id, e.target.value)}
-                          />
-                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleSaveHotelPrice(rt.id)}>
-                            Guardar
-                          </button>
-                        </div>
-                      )}
-                    </td>
                     <td style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis' }}>{rt.description || '-'}</td>
-                    <td>
-                      {selectedHotel === 0 ? (
-                        <span className="inventory-subtle">Selecciona hotel</span>
-                      ) : (
-                        <span className={`badge ${assigned ? 'confirmed' : 'cancelled'}`}>
-                          {assigned ? 'Asignado' : 'No asignado'}
-                        </span>
-                      )}
-                    </td>
                     <td>
                       <div className="actions">
                         <button className="btn-icon" onClick={() => { setEditing(rt); setShowModal(true) }} title="Editar tipo">
@@ -298,15 +261,6 @@ export default function RoomTypes() {
                         <button className="btn-icon" onClick={() => handleDelete(rt.id)} title="Eliminar tipo">
                           <Trash2 size={16} />
                         </button>
-                        {selectedHotel > 0 && (
-                          <button
-                            className="btn-icon"
-                            onClick={() => handleToggleAssignment(rt.id)}
-                            title={assigned ? 'Quitar del hotel' : 'Asignar al hotel'}
-                          >
-                            {assigned ? <Link2Off size={16} /> : <LinkIcon size={16} />}
-                          </button>
-                        )}
                       </div>
                     </td>
                   </tr>
@@ -317,6 +271,93 @@ export default function RoomTypes() {
           </div>
         )}
       </div>
+
+      {showHotelManagement && (
+        <div className="card" style={{ marginTop: 24 }}>
+          <div className="inventory-matrix-header">
+            <div>
+              <h3>Gestion por Hotel</h3>
+              <p className="inventory-subtle">Asigna tipos al hotel y define su precio especifico.</p>
+            </div>
+            <div className="form-group" style={{ margin: 0, minWidth: 320 }}>
+              <select className="form-control" value={selectedHotel}
+                      onChange={e => setSelectedHotel(parseInt(e.target.value))}>
+                {hotels.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {hotels.length === 0 ? (
+            <div className="empty-state"><p>No hay hoteles disponibles</p></div>
+          ) : (
+            <>
+              <p className="inventory-subtle" style={{ marginBottom: 12 }}>
+                Gestionando asignaciones para: <strong>{selectedHotelName}</strong>
+              </p>
+              <div className="table-container">
+                <table>
+                  <thead>
+                  <tr>
+                    <th>Nombre</th>
+                    <th>Precio base</th>
+                    <th>Precio hotel</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                  </tr>
+                  </thead>
+                  <tbody>
+                  {roomTypes.map(rt => {
+                    const assigned = assignedRoomTypeIds.has(rt.id)
+                    const effectiveHotelPrice = hotelPrices[rt.id] ?? rt.basePrice
+                    const draftValue = priceDrafts[rt.id] ?? String(effectiveHotelPrice)
+
+                    return (
+                      <tr key={`hotel-${rt.id}`}>
+                        <td><strong>{rt.name}</strong></td>
+                        <td>{rt.basePrice.toFixed(2)} EUR</td>
+                        <td>
+                          {!assigned ? (
+                            <span className="inventory-subtle">No asignado</span>
+                          ) : (
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                              <input
+                                className="form-control"
+                                style={{ width: 120, margin: 0, padding: '6px 8px' }}
+                                type="number"
+                                min="0.01"
+                                step="0.01"
+                                value={draftValue}
+                                onChange={e => handlePriceDraftChange(rt.id, e.target.value)}
+                              />
+                              <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleSaveHotelPrice(rt.id)}>
+                                Guardar
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                        <td>
+                          <span className={`badge ${assigned ? 'confirmed' : 'cancelled'}`}>
+                            {assigned ? 'Asignado' : 'No asignado'}
+                          </span>
+                        </td>
+                        <td>
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => handleToggleAssignment(rt.id)}
+                          >
+                            {assigned ? <><Link2Off size={14} /> Quitar</> : <><LinkIcon size={14} /> Asignar</>}
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {showModal && <RoomTypeModal roomType={editing} onClose={() => { setShowModal(false); setEditing(null) }} onSave={handleSave} />}
     </div>

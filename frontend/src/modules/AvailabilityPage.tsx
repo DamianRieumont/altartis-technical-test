@@ -172,6 +172,12 @@ export default function AvailabilityPage() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
+  useEffect(() => {
+    if (selectedHotel === 0 && hotels.length > 0) {
+      setSelectedHotel(hotels[0].id)
+    }
+  }, [selectedHotel, hotels])
+
   const handleBulkSave = async (roomTypeId: number, fromDate: string, toDate: string, rooms: number) => {
     try {
       await api.availability.createBulk(selectedHotel, roomTypeId, fromDate, toDate, rooms)
@@ -338,6 +344,8 @@ export default function AvailabilityPage() {
 
       {loading ? (
         <div className="loading">Cargando...</div>
+      ) : hotels.length === 0 ? (
+        <div className="card"><div className="empty-state"><p>No hay hoteles cargados</p></div></div>
       ) : selectedHotel === 0 ? (
         <div className="card"><div className="empty-state"><p>Selecciona un hotel para ver el inventario</p></div></div>
       ) : loadError ? (

@@ -64,6 +64,12 @@ function ReservationModal({ reservation, hotels, onClose, onSave }: {
     }
   }, [hotelId, reservation])
 
+  useEffect(() => {
+    if (!reservation && hotelId === 0 && hotels.length > 0) {
+      setHotelId(hotels[0].id)
+    }
+  }, [reservation, hotelId, hotels])
+
   const selectedRoomType = roomTypes.find(rt => rt.id === roomTypeId)
   const selectedRoomTypePrice = selectedRoomType ? (hotelPriceByRoomType[selectedRoomType.id] ?? selectedRoomType.basePrice) : null
 
