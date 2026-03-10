@@ -22,6 +22,11 @@ export interface RoomType {
   basePrice: number;
 }
 
+export interface HotelRoomTypePrice {
+  roomTypeId: number;
+  price: number;
+}
+
 export interface Availability {
   id: number;
   date: string;

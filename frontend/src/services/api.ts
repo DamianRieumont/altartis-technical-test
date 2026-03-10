@@ -40,6 +40,7 @@ export const api = {
   roomTypes: {
     getAll: () => request<any[]>('/room-types'),
     getByHotel: (hotelId: number) => request<any[]>(`/room-types/hotel/${hotelId}`),
+    getHotelPrices: (hotelId: number) => request<any[]>(`/room-types/hotel/${hotelId}/prices`),
     getById: (id: number) => request<any>(`/room-types/${id}`),
     create: (roomType: any) =>
       request<any>('/room-types', { method: 'POST', body: JSON.stringify(roomType) }),
@@ -47,6 +48,8 @@ export const api = {
       request<void>(`/room-types/hotel/${hotelId}/${roomTypeId}`, { method: 'POST' }),
     unassignFromHotel: (hotelId: number, roomTypeId: number) =>
       request<void>(`/room-types/hotel/${hotelId}/${roomTypeId}`, { method: 'DELETE' }),
+    updateHotelPrice: (hotelId: number, roomTypeId: number, price: number) =>
+      request<void>(`/room-types/hotel/${hotelId}/${roomTypeId}/price?price=${price}`, { method: 'PUT' }),
     update: (id: number, roomType: any) =>
       request<any>(`/room-types/${id}`, { method: 'PUT', body: JSON.stringify(roomType) }),
     delete: (id: number) => request<void>(`/room-types/${id}`, { method: 'DELETE' }),

@@ -1,16 +1,23 @@
 package com.altairis.backoffice.controller;
 
+import com.altairis.backoffice.exception.ApiException;
 import com.altairis.backoffice.model.Hotel;
+import com.altairis.backoffice.model.HotelRoomTypePrice;
 import com.altairis.backoffice.model.RoomType;
 import com.altairis.backoffice.repository.HotelRepository;
+import com.altairis.backoffice.repository.HotelRoomTypePriceRepository;
 import com.altairis.backoffice.repository.RoomTypeRepository;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/room-types")
@@ -18,10 +25,14 @@ public class RoomTypeController {
 
     private final RoomTypeRepository roomTypeRepository;
     private final HotelRepository hotelRepository;
+    private final HotelRoomTypePriceRepository hotelRoomTypePriceRepository;
 
-    public RoomTypeController(RoomTypeRepository roomTypeRepository, HotelRepository hotelRepository) {
+    public RoomTypeController(RoomTypeRepository roomTypeRepository,
+                              HotelRepository hotelRepository,
+                              HotelRoomTypePriceRepository hotelRoomTypePriceRepository) {
         this.roomTypeRepository = roomTypeRepository;
         this.hotelRepository = hotelRepository;
+        this.hotelRoomTypePriceRepository = hotelRoomTypePriceRepository;
     }
 
     @GetMapping
@@ -32,6 +43,25 @@ public class RoomTypeController {
     @GetMapping("/hotel/{hotelId}")
     public List<RoomType> getByHotel(@PathVariable Long hotelId) {
         return roomTypeRepository.findByHotelsId(hotelId);
+    }
+
+    @GetMapping("/hotel/{hotelId}/prices")
+    public ResponseEntity<List<HotelRoomTypePriceView>> getHotelPrices(@PathVariable Long hotelId) {
+        if (!hotelRepository.existsById(hotelId)) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Map<Long, BigDecimal> overrides = hotelRoomTypePriceRepository.findByHotelId(hotelId).stream()
+                .collect(Collectors.toMap(HotelRoomTypePrice::getRoomTypeId, HotelRoomTypePrice::getPrice));
+
+        List<HotelRoomTypePriceView> prices = roomTypeRepository.findByHotelsId(hotelId).stream()
+                .map(roomType -> new HotelRoomTypePriceView(
+                        roomType.getId(),
+                        overrides.getOrDefault(roomType.getId(), roomType.getBasePrice())
+                ))
+                .toList();
+
+        return ResponseEntity.ok(prices);
     }
 
     @GetMapping("/{id}")
@@ -61,6 +91,14 @@ public class RoomTypeController {
         hotel.getRoomTypes().add(roomType);
         hotelRepository.save(hotel);
 
+        if (hotelRoomTypePriceRepository.findByHotelIdAndRoomTypeId(hotelId, roomTypeId).isEmpty()) {
+            HotelRoomTypePrice roomTypePrice = new HotelRoomTypePrice();
+            roomTypePrice.setHotel(hotel);
+            roomTypePrice.setRoomType(roomType);
+            roomTypePrice.setPrice(roomType.getBasePrice());
+            hotelRoomTypePriceRepository.save(roomTypePrice);
+        }
+
         return ResponseEntity.noContent().build();
     }
 
@@ -77,6 +115,40 @@ public class RoomTypeController {
         Hotel hotel = hotelOpt.get();
         hotel.getRoomTypes().remove(roomTypeOpt.get());
         hotelRepository.save(hotel);
+        hotelRoomTypePriceRepository.deleteByHotelIdAndRoomTypeId(hotelId, roomTypeId);
+
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/hotel/{hotelId}/{roomTypeId}/price")
+    @Transactional
+    public ResponseEntity<Void> updateHotelPrice(@PathVariable Long hotelId,
+                                                 @PathVariable Long roomTypeId,
+                                                 @RequestParam BigDecimal price) {
+        if (price == null || price.signum() <= 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "El precio debe ser mayor que 0");
+        }
+
+        var hotelOpt = hotelRepository.findById(hotelId);
+        var roomTypeOpt = roomTypeRepository.findById(roomTypeId);
+
+        if (hotelOpt.isEmpty() || roomTypeOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        if (!roomTypeRepository.existsByIdAndHotelsId(roomTypeId, hotelId)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "El tipo de habitacion no esta asignado al hotel");
+        }
+
+        HotelRoomTypePrice roomTypePrice = hotelRoomTypePriceRepository
+                .findByHotelIdAndRoomTypeId(hotelId, roomTypeId)
+                .orElseGet(() -> {
+                    HotelRoomTypePrice created = new HotelRoomTypePrice();
+                    created.setHotel(hotelOpt.get());
+                    created.setRoomType(roomTypeOpt.get());
+                    return created;
+                });
+        roomTypePrice.setPrice(price);
+        hotelRoomTypePriceRepository.save(roomTypePrice);
 
         return ResponseEntity.noContent().build();
     }
@@ -105,7 +177,10 @@ public class RoomTypeController {
             hotel.getRoomTypes().remove(roomType);
             hotelRepository.save(hotel);
         }
+        hotelRoomTypePriceRepository.deleteByRoomTypeId(roomType.getId());
         roomTypeRepository.delete(roomType);
         return ResponseEntity.noContent().build();
     }
+
+    public record HotelRoomTypePriceView(Long roomTypeId, BigDecimal price) {}
 }

@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Search, Plus, Pencil, Trash2, X } from 'lucide-react'
 import { api } from '../services/api'
-import { Reservation, Hotel, RoomType, Page } from '../types'
+import { Reservation, Hotel, RoomType, Page, HotelRoomTypePrice } from '../types'
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message
@@ -28,6 +28,7 @@ function ReservationModal({ reservation, hotels, onClose, onSave }: {
   })
   const [hotelId, setHotelId] = useState(hotels[0]?.id || 0)
   const [roomTypes, setRoomTypes] = useState<RoomType[]>([])
+  const [hotelPriceByRoomType, setHotelPriceByRoomType] = useState<Record<number, number>>({})
   const [roomTypeId, setRoomTypeId] = useState(0)
 
   useEffect(() => {
@@ -46,12 +47,25 @@ function ReservationModal({ reservation, hotels, onClose, onSave }: {
 
   useEffect(() => {
     if (hotelId > 0) {
-      api.roomTypes.getByHotel(hotelId).then(rts => {
-        setRoomTypes(rts)
-        if (!reservation && rts.length > 0) setRoomTypeId(rts[0].id)
+      Promise.all([
+        api.roomTypes.getByHotel(hotelId),
+        api.roomTypes.getHotelPrices(hotelId),
+      ]).then(([rts, prices]) => {
+        const typedRoomTypes = rts as RoomType[]
+        const typedPrices = prices as HotelRoomTypePrice[]
+        setRoomTypes(typedRoomTypes)
+        const priceMap = typedPrices.reduce((acc, item) => {
+          acc[item.roomTypeId] = item.price
+          return acc
+        }, {} as Record<number, number>)
+        setHotelPriceByRoomType(priceMap)
+        if (!reservation && typedRoomTypes.length > 0) setRoomTypeId(typedRoomTypes[0].id)
       })
     }
   }, [hotelId, reservation])
+
+  const selectedRoomType = roomTypes.find(rt => rt.id === roomTypeId)
+  const selectedRoomTypePrice = selectedRoomType ? (hotelPriceByRoomType[selectedRoomType.id] ?? selectedRoomType.basePrice) : null
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -85,7 +99,10 @@ function ReservationModal({ reservation, hotels, onClose, onSave }: {
                 <select className="form-control" required value={roomTypeId}
                         onChange={e => setRoomTypeId(parseInt(e.target.value))}>
                   <option value={0}>Seleccionar...</option>
-                  {roomTypes.map(rt => <option key={rt.id} value={rt.id}>{rt.name} - {rt.basePrice} EUR</option>)}
+                  {roomTypes.map(rt => {
+                    const effectivePrice = hotelPriceByRoomType[rt.id] ?? rt.basePrice
+                    return <option key={rt.id} value={rt.id}>{rt.name} - {effectivePrice.toFixed(2)} EUR</option>
+                  })}
                 </select>
               </div>
             </div>
@@ -128,6 +145,11 @@ function ReservationModal({ reservation, hotels, onClose, onSave }: {
                 <label>Precio total (EUR) *</label>
                 <input className="form-control" type="number" min="0" step="0.01" required value={form.totalPrice}
                        onChange={e => setForm({ ...form, totalPrice: parseFloat(e.target.value) })} />
+                {selectedRoomTypePrice !== null && (
+                  <div className="inventory-subtle" style={{ marginTop: 4 }}>
+                    Tarifa de referencia para el tipo seleccionado: {selectedRoomTypePrice.toFixed(2)} EUR por noche
+                  </div>
+                )}
               </div>
             </div>
             <div className="form-group">

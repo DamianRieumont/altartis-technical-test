@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Plus, Pencil, Trash2, X, Link as LinkIcon, Link2Off } from 'lucide-react'
 import { api } from '../services/api'
-import { RoomType, Hotel } from '../types'
+import { RoomType, Hotel, HotelRoomTypePrice } from '../types'
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message
@@ -80,6 +80,8 @@ export default function RoomTypes() {
   const [hotels, setHotels] = useState<Hotel[]>([])
   const [selectedHotel, setSelectedHotel] = useState<number>(0)
   const [assignedRoomTypeIds, setAssignedRoomTypeIds] = useState<Set<number>>(new Set())
+  const [hotelPrices, setHotelPrices] = useState<Record<number, number>>({})
+  const [priceDrafts, setPriceDrafts] = useState<Record<number, string>>({})
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState<RoomType | null>(null)
@@ -96,10 +98,29 @@ export default function RoomTypes() {
       setRoomTypes(allRoomTypes)
 
       if (selectedHotel > 0) {
-        const assigned = await api.roomTypes.getByHotel(selectedHotel)
+        const [assignedRaw, pricingRaw] = await Promise.all([
+          api.roomTypes.getByHotel(selectedHotel),
+          api.roomTypes.getHotelPrices(selectedHotel),
+        ])
+        const assigned = assignedRaw as RoomType[]
+        const pricing = pricingRaw as HotelRoomTypePrice[]
         setAssignedRoomTypeIds(new Set(assigned.map(rt => rt.id)))
+
+        const priceMap = pricing.reduce((acc, item) => {
+          acc[item.roomTypeId] = item.price
+          return acc
+        }, {} as Record<number, number>)
+        setHotelPrices(priceMap)
+
+        const initialDrafts = pricing.reduce((acc, item) => {
+          acc[item.roomTypeId] = String(item.price)
+          return acc
+        }, {} as Record<number, string>)
+        setPriceDrafts(initialDrafts)
       } else {
         setAssignedRoomTypeIds(new Set())
+        setHotelPrices({})
+        setPriceDrafts({})
       }
     } catch (e) {
       console.error(e)
@@ -147,6 +168,28 @@ export default function RoomTypes() {
     }
   }
 
+  const handlePriceDraftChange = (roomTypeId: number, value: string) => {
+    setPriceDrafts(prev => ({ ...prev, [roomTypeId]: value }))
+  }
+
+  const handleSaveHotelPrice = async (roomTypeId: number) => {
+    if (selectedHotel === 0 || !assignedRoomTypeIds.has(roomTypeId)) return
+
+    const raw = (priceDrafts[roomTypeId] || '').trim()
+    const parsed = Number.parseFloat(raw)
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      alert('Introduce un precio valido mayor que 0')
+      return
+    }
+
+    try {
+      await api.roomTypes.updateHotelPrice(selectedHotel, roomTypeId, parsed)
+      await fetchData()
+    } catch (error) {
+      alert(getErrorMessage(error))
+    }
+  }
+
   const handleDelete = async (id: number) => {
     if (confirm('Estas seguro de eliminar este tipo de habitacion del catalogo?')) {
       try {
@@ -183,7 +226,7 @@ export default function RoomTypes() {
 
         {selectedHotel > 0 && (
           <p className="inventory-subtle" style={{ marginBottom: 16 }}>
-            Asignaciones activas para: <strong>{selectedHotelName}</strong>
+            Asignaciones activas para: <strong>{selectedHotelName}</strong> (con precio especifico por hotel)
           </p>
         )}
 
@@ -199,6 +242,7 @@ export default function RoomTypes() {
                 <th>Nombre</th>
                 <th>Capacidad</th>
                 <th>Precio base</th>
+                <th>Precio hotel</th>
                 <th>Descripcion</th>
                 <th>Asignacion hotel</th>
                 <th>Acciones</th>
@@ -207,11 +251,35 @@ export default function RoomTypes() {
               <tbody>
               {roomTypes.map(rt => {
                 const assigned = assignedRoomTypeIds.has(rt.id)
+                const effectiveHotelPrice = hotelPrices[rt.id] ?? rt.basePrice
+                const draftValue = priceDrafts[rt.id] ?? String(effectiveHotelPrice)
                 return (
                   <tr key={rt.id}>
                     <td><strong>{rt.name}</strong></td>
                     <td>{rt.capacity} persona{rt.capacity > 1 ? 's' : ''}</td>
                     <td>{rt.basePrice.toFixed(2)} EUR</td>
+                    <td>
+                      {selectedHotel === 0 ? (
+                        <span className="inventory-subtle">Selecciona hotel</span>
+                      ) : !assigned ? (
+                        <span className="inventory-subtle">No asignado</span>
+                      ) : (
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <input
+                            className="form-control"
+                            style={{ width: 115, margin: 0, padding: '6px 8px' }}
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            value={draftValue}
+                            onChange={e => handlePriceDraftChange(rt.id, e.target.value)}
+                          />
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleSaveHotelPrice(rt.id)}>
+                            Guardar
+                          </button>
+                        </div>
+                      )}
+                    </td>
                     <td style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis' }}>{rt.description || '-'}</td>
                     <td>
                       {selectedHotel === 0 ? (
