@@ -11,25 +11,11 @@ function getErrorMessage(error: unknown): string {
   return 'Error inesperado'
 }
 
-function formatDateShort(value: string): string {
-  return value.slice(5)
-}
+const WEEKDAY_SHORT = ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab']
 
 type ChartPoint = {
   date: string
   rooms: number
-}
-
-type WeekColumn = {
-  key: string
-  start: string
-  end: string
-}
-
-type WeeklyStats = {
-  totalRooms: number
-  days: number
-  minRooms: number
 }
 
 function parseIsoDate(isoDate: string): Date {
@@ -62,6 +48,18 @@ function addDaysIso(isoDate: string, days: number): string {
   const date = parseIsoDate(isoDate)
   date.setUTCDate(date.getUTCDate() + days)
   return toIsoDate(date)
+}
+
+function getDateLabelForAxis(isoDate: string): string {
+  const date = parseIsoDate(isoDate)
+  return `${WEEKDAY_SHORT[date.getUTCDay()]} ${String(date.getUTCDate()).padStart(2, '0')}`
+}
+
+function getDateLabelForHeader(isoDate: string): string {
+  const date = parseIsoDate(isoDate)
+  const day = String(date.getUTCDate()).padStart(2, '0')
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  return `${WEEKDAY_SHORT[date.getUTCDay()]} ${day}/${month}`
 }
 
 function BulkModal({ roomTypes, onClose, onSave }: {
@@ -118,18 +116,24 @@ export default function AvailabilityPage() {
   const [roomTypes, setRoomTypes] = useState<RoomType[]>([])
   const [availability, setAvailability] = useState<Availability[]>([])
   const [selectedHotel, setSelectedHotel] = useState<number>(0)
+  const [canGoPrevWeek, setCanGoPrevWeek] = useState(false)
+  const [canGoNextWeek, setCanGoNextWeek] = useState(false)
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [loadError, setLoadError] = useState<string>('')
 
-  const today = new Date()
-  const initialFrom = today.toISOString().split('T')[0]
-  const initialToDate = new Date(today)
-  initialToDate.setDate(initialToDate.getDate() + 30)
-  const initialTo = initialToDate.toISOString().split('T')[0]
+  const todayIso = new Date().toISOString().split('T')[0]
+  const initialFrom = getWeekStartIso(todayIso)
+  const initialTo = getWeekEndIso(initialFrom)
 
   const [from, setFrom] = useState(initialFrom)
   const [to, setTo] = useState(initialTo)
+
+  const setWeekRangeFromDate = useCallback((dateIso: string) => {
+    const weekStart = getWeekStartIso(dateIso)
+    setFrom(weekStart)
+    setTo(getWeekEndIso(weekStart))
+  }, [])
 
   const shiftRangeByWeeks = useCallback((weeks: number) => {
     const shiftDays = weeks * 7
@@ -138,8 +142,8 @@ export default function AvailabilityPage() {
   }, [])
 
   const setCurrentWeekRange = useCallback(() => {
-    const todayIso = new Date().toISOString().split('T')[0]
-    const weekStart = getWeekStartIso(todayIso)
+    const currentDay = new Date().toISOString().split('T')[0]
+    const weekStart = getWeekStartIso(currentDay)
     setFrom(weekStart)
     setTo(getWeekEndIso(weekStart))
   }, [])
@@ -153,18 +157,31 @@ export default function AvailabilityPage() {
       setHotels(hotelsData.content)
 
       if (selectedHotel > 0) {
-        const [rts, avail] = await Promise.all([
+        const prevFrom = addDaysIso(from, -7)
+        const prevTo = addDaysIso(to, -7)
+        const nextFrom = addDaysIso(from, 7)
+        const nextTo = addDaysIso(to, 7)
+
+        const [rts, avail, prevAvail, nextAvail] = await Promise.all([
           api.roomTypes.getByHotel(selectedHotel),
           api.availability.getByHotel(selectedHotel, from, to),
+          api.availability.getByHotel(selectedHotel, prevFrom, prevTo),
+          api.availability.getByHotel(selectedHotel, nextFrom, nextTo),
         ])
         setRoomTypes(rts)
         setAvailability(avail)
+        setCanGoPrevWeek(prevAvail.length > 0)
+        setCanGoNextWeek(nextAvail.length > 0)
       } else {
         setRoomTypes([])
         setAvailability([])
+        setCanGoPrevWeek(false)
+        setCanGoNextWeek(false)
       }
     } catch (error) {
       setLoadError(getErrorMessage(error))
+      setCanGoPrevWeek(false)
+      setCanGoNextWeek(false)
     } finally {
       setLoading(false)
     }
@@ -200,41 +217,23 @@ export default function AvailabilityPage() {
       .sort((a, b) => a.date.localeCompare(b.date))
   }, [availability])
 
-  const weekColumns = useMemo<WeekColumn[]>(() => {
-    const map = new Map<string, WeekColumn>()
-    for (const item of availability) {
-      const start = getWeekStartIso(item.date)
-      if (!map.has(start)) {
-        map.set(start, {
-          key: start,
-          start,
-          end: getWeekEndIso(start),
-        })
-      }
+  const dateColumns = useMemo(() => {
+    const columns: string[] = []
+    const cursor = parseIsoDate(from)
+    while (toIsoDate(cursor) <= to) {
+      columns.push(toIsoDate(cursor))
+      cursor.setUTCDate(cursor.getUTCDate() + 1)
     }
-    return Array.from(map.values()).sort((a, b) => a.start.localeCompare(b.start))
-  }, [availability])
+    return columns
+  }, [from, to])
 
-  const roomTypeWeekMap = useMemo(() => {
-    const map = new Map<number, Map<string, WeeklyStats>>()
+  const roomTypeDateMap = useMemo(() => {
+    const map = new Map<number, Map<string, number>>()
     for (const item of availability) {
-      const weekKey = getWeekStartIso(item.date)
       if (!map.has(item.roomTypeId)) {
         map.set(item.roomTypeId, new Map())
       }
-      const weeklyStats = map.get(item.roomTypeId)!
-      const current = weeklyStats.get(weekKey)
-      if (current) {
-        current.totalRooms += item.availableRooms
-        current.days += 1
-        current.minRooms = Math.min(current.minRooms, item.availableRooms)
-      } else {
-        weeklyStats.set(weekKey, {
-          totalRooms: item.availableRooms,
-          days: 1,
-          minRooms: item.availableRooms,
-        })
-      }
+      map.get(item.roomTypeId)!.set(item.date, item.availableRooms)
     }
     return map
   }, [availability])
@@ -247,41 +246,28 @@ export default function AvailabilityPage() {
     return map
   }, [chartData])
 
-  const totalByWeek = useMemo(() => {
-    const map = new Map<string, WeeklyStats>()
-    for (const item of availability) {
-      const weekKey = getWeekStartIso(item.date)
-      const current = map.get(weekKey)
-      if (current) {
-        current.totalRooms += item.availableRooms
-        current.days += 1
-        current.minRooms = Math.min(current.minRooms, item.availableRooms)
-      } else {
-        map.set(weekKey, {
-          totalRooms: item.availableRooms,
-          days: 1,
-          minRooms: item.availableRooms,
-        })
-      }
-    }
-    return map
-  }, [availability])
+  const currentWeekStart = getWeekStartIso(todayIso)
+  const currentWeekEnd = getWeekEndIso(currentWeekStart)
+  const isCurrentWeek = from === currentWeekStart && to === currentWeekEnd
 
-  const todayIso = new Date().toISOString().split('T')[0]
-  const totalToday = totalByDate.get(todayIso) || 0
   const totalSlots = availability.length
   const soldOutSlots = availability.filter(a => a.availableRooms === 0).length
   const lowSlots = availability.filter(a => a.availableRooms > 0 && a.availableRooms <= 3).length
-  const averagePerDay = chartData.length > 0 ? chartData.reduce((acc, cur) => acc + cur.rooms, 0) / chartData.length : 0
-  const maxDailyInventory = chartData.length > 0 ? Math.max(...chartData.map(point => point.rooms)) : 0
-  const todayAvailabilityPct = maxDailyInventory > 0 ? (totalToday / maxDailyInventory) * 100 : 0
+  const totalPeriodRooms = dateColumns.reduce((sum, date) => sum + (totalByDate.get(date) || 0), 0)
+  const averagePerDay = dateColumns.length > 0 ? totalPeriodRooms / dateColumns.length : 0
+  const maxDailyInventory = dateColumns.length > 0 ? Math.max(...dateColumns.map(date => totalByDate.get(date) || 0)) : 0
+  const weekAvailabilityPct = maxDailyInventory > 0 ? (averagePerDay / maxDailyInventory) * 100 : 0
 
   const chartPercentData = useMemo(() => {
-    return chartData.map(point => ({
-      ...point,
-      availabilityPct: maxDailyInventory > 0 ? Number(((point.rooms / maxDailyInventory) * 100).toFixed(1)) : 0,
-    }))
-  }, [chartData, maxDailyInventory])
+    return dateColumns.map(date => {
+      const rooms = totalByDate.get(date) || 0
+      return {
+        date,
+        rooms,
+        availabilityPct: maxDailyInventory > 0 ? Number(((rooms / maxDailyInventory) * 100).toFixed(1)) : 0,
+      }
+    })
+  }, [dateColumns, totalByDate, maxDailyInventory])
 
   return (
     <div>
@@ -312,28 +298,45 @@ export default function AvailabilityPage() {
             <div className="form-group inventory-filter-item">
               <label>Desde</label>
               <input className="form-control" type="date" value={from}
-                     max={to} onChange={e => setFrom(e.target.value)} />
+                     onChange={e => setWeekRangeFromDate(e.target.value)} />
             </div>
             <div className="form-group inventory-filter-item">
               <label>Hasta</label>
               <input className="form-control" type="date" value={to}
-                     min={from} onChange={e => setTo(e.target.value)} />
+                     onChange={e => setWeekRangeFromDate(e.target.value)} />
             </div>
             <div className="form-group inventory-filter-item" style={{ minWidth: 'auto' }}>
               <label>Navegacion</label>
               <div className="inventory-quick-nav">
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => shiftRangeByWeeks(-1)}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => shiftRangeByWeeks(-1)}
+                  disabled={!canGoPrevWeek}
+                >
                   Semana anterior
                 </button>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={setCurrentWeekRange}>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${isCurrentWeek ? 'btn-week-current' : 'btn-secondary'}`}
+                  onClick={setCurrentWeekRange}
+                >
                   Esta semana
                 </button>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => shiftRangeByWeeks(1)}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => shiftRangeByWeeks(1)}
+                  disabled={!canGoNextWeek}
+                >
                   Semana siguiente
                 </button>
               </div>
             </div>
           </div>
+          <p className="inventory-subtle" style={{ margin: '8px 0 0 0' }}>
+            Vista semanal fija: siempre se muestran 7 dias (lunes a domingo).
+          </p>
           {selectedHotel > 0 && (
             <button className="btn btn-primary" onClick={() => setShowModal(true)}>
               <Plus size={18} /> Registrar Disponibilidad
@@ -356,15 +359,15 @@ export default function AvailabilityPage() {
             <div className="stat-card">
               <div className="stat-icon green"><Boxes size={24} /></div>
               <div className="stat-info">
-                <h4>{totalToday}</h4>
-                <p>Inventario disponible hoy</p>
+                <h4>{totalPeriodRooms}</h4>
+                <p>Inventario total semana</p>
               </div>
             </div>
             <div className="stat-card">
               <div className="stat-icon blue"><CalendarDays size={24} /></div>
               <div className="stat-info">
-                <h4>{todayAvailabilityPct.toFixed(1)}%</h4>
-                <p>Indice de disponibilidad hoy</p>
+                <h4>{weekAvailabilityPct.toFixed(1)}%</h4>
+                <p>Indice de disponibilidad semanal</p>
               </div>
             </div>
             <div className="stat-card">
@@ -391,11 +394,11 @@ export default function AvailabilityPage() {
               <ResponsiveContainer width="100%" height={300}>
                 <AreaChart data={chartPercentData}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" fontSize={11} tickFormatter={formatDateShort} />
+                  <XAxis dataKey="date" fontSize={11} tickFormatter={getDateLabelForAxis} />
                   <YAxis domain={[0, 100]} tickFormatter={v => `${v}%`} />
                   <Tooltip
-                    labelFormatter={value => `Fecha: ${value}`}
-                    formatter={(value, name, payload) => {
+                    labelFormatter={value => `Fecha: ${getDateLabelForHeader(String(value))}`}
+                    formatter={(value, name) => {
                       if (name === 'availabilityPct') {
                         return [`${value}%`, 'Disponibilidad relativa']
                       }
@@ -413,22 +416,22 @@ export default function AvailabilityPage() {
                 </AreaChart>
               </ResponsiveContainer>
               <p className="inventory-subtle" style={{ marginTop: 10 }}>
-                Porcentaje calculado contra el maximo inventario diario observado en el rango seleccionado ({maxDailyInventory} habitaciones).
+                Porcentaje calculado contra el maximo inventario diario observado en la semana ({maxDailyInventory} habitaciones).
               </p>
             </div>
           )}
 
           <div className="card">
             <div className="inventory-matrix-header">
-              <h3>Matriz de inventario por tipo y semana</h3>
+              <h3>Matriz de inventario semanal (lunes a domingo)</h3>
               <div className="inventory-legend">
-                <span className="badge confirmed">Alto (min 4+)</span>
-                <span className="badge pending">Bajo (min 1-3)</span>
-                <span className="badge cancelled">Agotado (min 0)</span>
+                <span className="badge confirmed">Alto (4+)</span>
+                <span className="badge pending">Bajo (1-3)</span>
+                <span className="badge cancelled">Agotado (0)</span>
               </div>
             </div>
             <p className="inventory-subtle" style={{ marginBottom: 12 }}>
-              Cada celda muestra el promedio diario semanal y debajo el minimo semanal.
+              Cada numero indica habitaciones disponibles ese dia exacto.
             </p>
 
             {roomTypes.length === 0 ? (
@@ -441,17 +444,16 @@ export default function AvailabilityPage() {
                   <thead>
                     <tr>
                       <th>Tipo</th>
-                      {weekColumns.map(week => <th key={week.key}>{`${formatDateShort(week.start)} a ${formatDateShort(week.end)}`}</th>)}
+                      {dateColumns.map(date => <th key={date}>{getDateLabelForHeader(date)}</th>)}
                       <th>Total periodo</th>
                       <th>Prom./dia</th>
                     </tr>
                   </thead>
                   <tbody>
                     {roomTypes.map(rt => {
-                      const values = roomTypeWeekMap.get(rt.id) || new Map<string, WeeklyStats>()
-                      const total = weekColumns.reduce((sum, week) => sum + (values.get(week.key)?.totalRooms || 0), 0)
-                      const totalDays = weekColumns.reduce((sum, week) => sum + (values.get(week.key)?.days || 0), 0)
-                      const average = totalDays > 0 ? total / totalDays : 0
+                      const values = roomTypeDateMap.get(rt.id) || new Map<string, number>()
+                      const total = dateColumns.reduce((sum, date) => sum + (values.get(date) || 0), 0)
+                      const average = dateColumns.length > 0 ? total / dateColumns.length : 0
 
                       return (
                         <tr key={rt.id}>
@@ -459,18 +461,16 @@ export default function AvailabilityPage() {
                             <strong>{rt.name}</strong>
                             <div className="inventory-subtle">Capacidad: {rt.capacity}</div>
                           </td>
-                          {weekColumns.map(week => {
-                            const weekStats = values.get(week.key)
-                            if (!weekStats) {
-                              return <td key={week.key}><span className="inventory-subtle">-</span></td>
+                          {dateColumns.map(date => {
+                            const rooms = values.get(date)
+                            if (rooms === undefined) {
+                              return <td key={date}><span className="inventory-subtle">-</span></td>
                             }
 
-                            const averageRooms = weekStats.totalRooms / weekStats.days
-                            const level = weekStats.minRooms === 0 ? 'cancelled' : weekStats.minRooms <= 3 ? 'pending' : 'confirmed'
+                            const level = rooms === 0 ? 'cancelled' : rooms <= 3 ? 'pending' : 'confirmed'
                             return (
-                              <td key={week.key}>
-                                <span className={`badge ${level}`}>{averageRooms.toFixed(1)}</span>
-                                <div className="inventory-subtle">min {weekStats.minRooms}</div>
+                              <td key={date}>
+                                <span className={`badge ${level}`}>{rooms}</span>
                               </td>
                             )
                           })}
@@ -481,12 +481,8 @@ export default function AvailabilityPage() {
                     })}
                     <tr>
                       <td><strong>Total hotel</strong></td>
-                      {weekColumns.map(week => {
-                        const weekStats = totalByWeek.get(week.key)
-                        const weekAverage = weekStats ? weekStats.totalRooms / weekStats.days : 0
-                        return <td key={week.key}><strong>{weekAverage.toFixed(1)}</strong></td>
-                      })}
-                      <td><strong>{chartData.reduce((sum, item) => sum + item.rooms, 0)}</strong></td>
+                      {dateColumns.map(date => <td key={date}><strong>{totalByDate.get(date) || 0}</strong></td>)}
+                      <td><strong>{totalPeriodRooms}</strong></td>
                       <td><strong>{averagePerDay.toFixed(1)}</strong></td>
                     </tr>
                   </tbody>

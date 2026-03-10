@@ -295,6 +295,16 @@ tbody tr:hover {
   font-size: 13px;
 }
 
+.btn-week-current {
+  background: var(--primary-light);
+  color: var(--primary);
+  border-color: #b6ccff;
+}
+
+.btn-week-current:hover {
+  background: #dce7ff;
+}
+
 .btn-icon {
   padding: 6px;
   background: none;
