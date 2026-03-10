@@ -116,6 +116,8 @@ export default function AvailabilityPage() {
   const [roomTypes, setRoomTypes] = useState<RoomType[]>([])
   const [availability, setAvailability] = useState<Availability[]>([])
   const [selectedHotel, setSelectedHotel] = useState<number>(0)
+  const [canGoPrevWeek, setCanGoPrevWeek] = useState(false)
+  const [canGoNextWeek, setCanGoNextWeek] = useState(false)
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [loadError, setLoadError] = useState<string>('')
@@ -155,18 +157,31 @@ export default function AvailabilityPage() {
       setHotels(hotelsData.content)
 
       if (selectedHotel > 0) {
-        const [rts, avail] = await Promise.all([
+        const prevFrom = addDaysIso(from, -7)
+        const prevTo = addDaysIso(to, -7)
+        const nextFrom = addDaysIso(from, 7)
+        const nextTo = addDaysIso(to, 7)
+
+        const [rts, avail, prevAvail, nextAvail] = await Promise.all([
           api.roomTypes.getByHotel(selectedHotel),
           api.availability.getByHotel(selectedHotel, from, to),
+          api.availability.getByHotel(selectedHotel, prevFrom, prevTo),
+          api.availability.getByHotel(selectedHotel, nextFrom, nextTo),
         ])
         setRoomTypes(rts)
         setAvailability(avail)
+        setCanGoPrevWeek(prevAvail.length > 0)
+        setCanGoNextWeek(nextAvail.length > 0)
       } else {
         setRoomTypes([])
         setAvailability([])
+        setCanGoPrevWeek(false)
+        setCanGoNextWeek(false)
       }
     } catch (error) {
       setLoadError(getErrorMessage(error))
+      setCanGoPrevWeek(false)
+      setCanGoNextWeek(false)
     } finally {
       setLoading(false)
     }
@@ -231,14 +246,17 @@ export default function AvailabilityPage() {
     return map
   }, [chartData])
 
-  const totalToday = totalByDate.get(todayIso) || 0
+  const currentWeekStart = getWeekStartIso(todayIso)
+  const currentWeekEnd = getWeekEndIso(currentWeekStart)
+  const isCurrentWeek = from === currentWeekStart && to === currentWeekEnd
+
   const totalSlots = availability.length
   const soldOutSlots = availability.filter(a => a.availableRooms === 0).length
   const lowSlots = availability.filter(a => a.availableRooms > 0 && a.availableRooms <= 3).length
   const totalPeriodRooms = dateColumns.reduce((sum, date) => sum + (totalByDate.get(date) || 0), 0)
   const averagePerDay = dateColumns.length > 0 ? totalPeriodRooms / dateColumns.length : 0
   const maxDailyInventory = dateColumns.length > 0 ? Math.max(...dateColumns.map(date => totalByDate.get(date) || 0)) : 0
-  const todayAvailabilityPct = maxDailyInventory > 0 ? (totalToday / maxDailyInventory) * 100 : 0
+  const weekAvailabilityPct = maxDailyInventory > 0 ? (averagePerDay / maxDailyInventory) * 100 : 0
 
   const chartPercentData = useMemo(() => {
     return dateColumns.map(date => {
@@ -290,13 +308,27 @@ export default function AvailabilityPage() {
             <div className="form-group inventory-filter-item" style={{ minWidth: 'auto' }}>
               <label>Navegacion</label>
               <div className="inventory-quick-nav">
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => shiftRangeByWeeks(-1)}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => shiftRangeByWeeks(-1)}
+                  disabled={!canGoPrevWeek}
+                >
                   Semana anterior
                 </button>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={setCurrentWeekRange}>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${isCurrentWeek ? 'btn-week-current' : 'btn-secondary'}`}
+                  onClick={setCurrentWeekRange}
+                >
                   Esta semana
                 </button>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => shiftRangeByWeeks(1)}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => shiftRangeByWeeks(1)}
+                  disabled={!canGoNextWeek}
+                >
                   Semana siguiente
                 </button>
               </div>
@@ -327,15 +359,15 @@ export default function AvailabilityPage() {
             <div className="stat-card">
               <div className="stat-icon green"><Boxes size={24} /></div>
               <div className="stat-info">
-                <h4>{totalToday}</h4>
-                <p>Inventario disponible hoy</p>
+                <h4>{totalPeriodRooms}</h4>
+                <p>Inventario total semana</p>
               </div>
             </div>
             <div className="stat-card">
               <div className="stat-icon blue"><CalendarDays size={24} /></div>
               <div className="stat-info">
-                <h4>{todayAvailabilityPct.toFixed(1)}%</h4>
-                <p>Indice de disponibilidad hoy</p>
+                <h4>{weekAvailabilityPct.toFixed(1)}%</h4>
+                <p>Indice de disponibilidad semanal</p>
               </div>
             </div>
             <div className="stat-card">
