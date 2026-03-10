@@ -1,3 +1,5 @@
+'use client'
+
 import { useEffect, useState, useCallback } from 'react'
 import { Search, Plus, Pencil, Trash2, X } from 'lucide-react'
 import { api } from '../services/api'

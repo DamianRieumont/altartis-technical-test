@@ -10,5 +10,6 @@ target/
 
 node_modules/
 dist/
+.next/
 .env
 *.log

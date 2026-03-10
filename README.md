@@ -5,7 +5,7 @@ MVP de backoffice operativo para la gestion hotelera de Viajes Altairis.
 ## Tecnologias
 
 - **Backend:** Java 17, Spring Boot 3.2, Hibernate, PostgreSQL
-- **Frontend:** React 18, TypeScript, Vite, Recharts
+- **Frontend:** Next.js 15, React 18, TypeScript, Recharts
 - **Infraestructura:** Docker, Docker Compose
 
 ## Ejecucion con Docker
@@ -25,8 +25,9 @@ La aplicacion estara disponible en:
 │   ├── src/main/java/      # Codigo fuente Java
 │   ├── Dockerfile
 │   └── pom.xml
-├── frontend/               # SPA React + TypeScript
-│   ├── src/
+├── frontend/               # Aplicacion Next.js
+│   ├── src/app/            # Rutas App Router
+│   ├── src/modules/        # Modulos de pantalla reutilizables
 │   ├── Dockerfile
 │   └── package.json
 └── docker-compose.yml      # Orquestacion de servicios
