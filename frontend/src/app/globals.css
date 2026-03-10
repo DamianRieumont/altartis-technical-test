@@ -429,6 +429,12 @@ textarea.form-control {
   min-width: 170px;
 }
 
+.inventory-quick-nav {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .inventory-matrix-header {
   display: flex;
   justify-content: space-between;

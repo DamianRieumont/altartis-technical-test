@@ -20,6 +20,50 @@ type ChartPoint = {
   rooms: number
 }
 
+type WeekColumn = {
+  key: string
+  start: string
+  end: string
+}
+
+type WeeklyStats = {
+  totalRooms: number
+  days: number
+  minRooms: number
+}
+
+function parseIsoDate(isoDate: string): Date {
+  const [year, month, day] = isoDate.split('-').map(Number)
+  return new Date(Date.UTC(year, month - 1, day))
+}
+
+function toIsoDate(date: Date): string {
+  const year = date.getUTCFullYear()
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(date.getUTCDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function getWeekStartIso(isoDate: string): string {
+  const date = parseIsoDate(isoDate)
+  const weekDay = date.getUTCDay()
+  const diffToMonday = weekDay === 0 ? -6 : 1 - weekDay
+  date.setUTCDate(date.getUTCDate() + diffToMonday)
+  return toIsoDate(date)
+}
+
+function getWeekEndIso(weekStartIso: string): string {
+  const date = parseIsoDate(weekStartIso)
+  date.setUTCDate(date.getUTCDate() + 6)
+  return toIsoDate(date)
+}
+
+function addDaysIso(isoDate: string, days: number): string {
+  const date = parseIsoDate(isoDate)
+  date.setUTCDate(date.getUTCDate() + days)
+  return toIsoDate(date)
+}
+
 function BulkModal({ roomTypes, onClose, onSave }: {
   roomTypes: RoomType[]; onClose: () => void; onSave: (roomTypeId: number, from: string, to: string, rooms: number) => void
 }) {
@@ -87,6 +131,19 @@ export default function AvailabilityPage() {
   const [from, setFrom] = useState(initialFrom)
   const [to, setTo] = useState(initialTo)
 
+  const shiftRangeByWeeks = useCallback((weeks: number) => {
+    const shiftDays = weeks * 7
+    setFrom(prev => addDaysIso(prev, shiftDays))
+    setTo(prev => addDaysIso(prev, shiftDays))
+  }, [])
+
+  const setCurrentWeekRange = useCallback(() => {
+    const todayIso = new Date().toISOString().split('T')[0]
+    const weekStart = getWeekStartIso(todayIso)
+    setFrom(weekStart)
+    setTo(getWeekEndIso(weekStart))
+  }, [])
+
   const fetchData = useCallback(async () => {
     setLoading(true)
     setLoadError('')
@@ -137,17 +194,41 @@ export default function AvailabilityPage() {
       .sort((a, b) => a.date.localeCompare(b.date))
   }, [availability])
 
-  const dateColumns = useMemo(() => {
-    return Array.from(new Set(availability.map(a => a.date))).sort((a, b) => a.localeCompare(b))
+  const weekColumns = useMemo<WeekColumn[]>(() => {
+    const map = new Map<string, WeekColumn>()
+    for (const item of availability) {
+      const start = getWeekStartIso(item.date)
+      if (!map.has(start)) {
+        map.set(start, {
+          key: start,
+          start,
+          end: getWeekEndIso(start),
+        })
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.start.localeCompare(b.start))
   }, [availability])
 
-  const roomTypeDateMap = useMemo(() => {
-    const map = new Map<number, Map<string, number>>()
+  const roomTypeWeekMap = useMemo(() => {
+    const map = new Map<number, Map<string, WeeklyStats>>()
     for (const item of availability) {
+      const weekKey = getWeekStartIso(item.date)
       if (!map.has(item.roomTypeId)) {
         map.set(item.roomTypeId, new Map())
       }
-      map.get(item.roomTypeId)!.set(item.date, item.availableRooms)
+      const weeklyStats = map.get(item.roomTypeId)!
+      const current = weeklyStats.get(weekKey)
+      if (current) {
+        current.totalRooms += item.availableRooms
+        current.days += 1
+        current.minRooms = Math.min(current.minRooms, item.availableRooms)
+      } else {
+        weeklyStats.set(weekKey, {
+          totalRooms: item.availableRooms,
+          days: 1,
+          minRooms: item.availableRooms,
+        })
+      }
     }
     return map
   }, [availability])
@@ -159,6 +240,26 @@ export default function AvailabilityPage() {
     }
     return map
   }, [chartData])
+
+  const totalByWeek = useMemo(() => {
+    const map = new Map<string, WeeklyStats>()
+    for (const item of availability) {
+      const weekKey = getWeekStartIso(item.date)
+      const current = map.get(weekKey)
+      if (current) {
+        current.totalRooms += item.availableRooms
+        current.days += 1
+        current.minRooms = Math.min(current.minRooms, item.availableRooms)
+      } else {
+        map.set(weekKey, {
+          totalRooms: item.availableRooms,
+          days: 1,
+          minRooms: item.availableRooms,
+        })
+      }
+    }
+    return map
+  }, [availability])
 
   const todayIso = new Date().toISOString().split('T')[0]
   const totalToday = totalByDate.get(todayIso) || 0
@@ -211,6 +312,20 @@ export default function AvailabilityPage() {
               <label>Hasta</label>
               <input className="form-control" type="date" value={to}
                      min={from} onChange={e => setTo(e.target.value)} />
+            </div>
+            <div className="form-group inventory-filter-item" style={{ minWidth: 'auto' }}>
+              <label>Navegacion</label>
+              <div className="inventory-quick-nav">
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => shiftRangeByWeeks(-1)}>
+                  Semana anterior
+                </button>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={setCurrentWeekRange}>
+                  Esta semana
+                </button>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => shiftRangeByWeeks(1)}>
+                  Semana siguiente
+                </button>
+              </div>
             </div>
           </div>
           {selectedHotel > 0 && (
@@ -297,13 +412,16 @@ export default function AvailabilityPage() {
 
           <div className="card">
             <div className="inventory-matrix-header">
-              <h3>Matriz de inventario por tipo y fecha</h3>
+              <h3>Matriz de inventario por tipo y semana</h3>
               <div className="inventory-legend">
-                <span className="badge confirmed">Alto (4+)</span>
-                <span className="badge pending">Bajo (1-3)</span>
-                <span className="badge cancelled">Agotado (0)</span>
+                <span className="badge confirmed">Alto (min 4+)</span>
+                <span className="badge pending">Bajo (min 1-3)</span>
+                <span className="badge cancelled">Agotado (min 0)</span>
               </div>
             </div>
+            <p className="inventory-subtle" style={{ marginBottom: 12 }}>
+              Cada celda muestra el promedio diario semanal y debajo el minimo semanal.
+            </p>
 
             {roomTypes.length === 0 ? (
               <div className="empty-state"><p>Este hotel no tiene tipos de habitacion</p></div>
@@ -315,16 +433,17 @@ export default function AvailabilityPage() {
                   <thead>
                     <tr>
                       <th>Tipo</th>
-                      {dateColumns.map(date => <th key={date}>{formatDateShort(date)}</th>)}
+                      {weekColumns.map(week => <th key={week.key}>{`${formatDateShort(week.start)} a ${formatDateShort(week.end)}`}</th>)}
                       <th>Total periodo</th>
                       <th>Prom./dia</th>
                     </tr>
                   </thead>
                   <tbody>
                     {roomTypes.map(rt => {
-                      const values = roomTypeDateMap.get(rt.id) || new Map<string, number>()
-                      const total = dateColumns.reduce((sum, date) => sum + (values.get(date) || 0), 0)
-                      const average = dateColumns.length > 0 ? total / dateColumns.length : 0
+                      const values = roomTypeWeekMap.get(rt.id) || new Map<string, WeeklyStats>()
+                      const total = weekColumns.reduce((sum, week) => sum + (values.get(week.key)?.totalRooms || 0), 0)
+                      const totalDays = weekColumns.reduce((sum, week) => sum + (values.get(week.key)?.days || 0), 0)
+                      const average = totalDays > 0 ? total / totalDays : 0
 
                       return (
                         <tr key={rt.id}>
@@ -332,16 +451,18 @@ export default function AvailabilityPage() {
                             <strong>{rt.name}</strong>
                             <div className="inventory-subtle">Capacidad: {rt.capacity}</div>
                           </td>
-                          {dateColumns.map(date => {
-                            const rooms = values.get(date)
-                            if (rooms === undefined) {
-                              return <td key={date}><span className="inventory-subtle">-</span></td>
+                          {weekColumns.map(week => {
+                            const weekStats = values.get(week.key)
+                            if (!weekStats) {
+                              return <td key={week.key}><span className="inventory-subtle">-</span></td>
                             }
 
-                            const level = rooms === 0 ? 'cancelled' : rooms <= 3 ? 'pending' : 'confirmed'
+                            const averageRooms = weekStats.totalRooms / weekStats.days
+                            const level = weekStats.minRooms === 0 ? 'cancelled' : weekStats.minRooms <= 3 ? 'pending' : 'confirmed'
                             return (
-                              <td key={date}>
-                                <span className={`badge ${level}`}>{rooms}</span>
+                              <td key={week.key}>
+                                <span className={`badge ${level}`}>{averageRooms.toFixed(1)}</span>
+                                <div className="inventory-subtle">min {weekStats.minRooms}</div>
                               </td>
                             )
                           })}
@@ -352,7 +473,11 @@ export default function AvailabilityPage() {
                     })}
                     <tr>
                       <td><strong>Total hotel</strong></td>
-                      {dateColumns.map(date => <td key={date}><strong>{totalByDate.get(date) || 0}</strong></td>)}
+                      {weekColumns.map(week => {
+                        const weekStats = totalByWeek.get(week.key)
+                        const weekAverage = weekStats ? weekStats.totalRooms / weekStats.days : 0
+                        return <td key={week.key}><strong>{weekAverage.toFixed(1)}</strong></td>
+                      })}
                       <td><strong>{chartData.reduce((sum, item) => sum + item.rooms, 0)}</strong></td>
                       <td><strong>{averagePerDay.toFixed(1)}</strong></td>
                     </tr>
