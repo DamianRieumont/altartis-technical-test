@@ -1,12 +1,15 @@
 package com.altairis.backoffice.controller;
 
+import com.altairis.backoffice.model.Hotel;
 import com.altairis.backoffice.model.RoomType;
 import com.altairis.backoffice.repository.HotelRepository;
 import com.altairis.backoffice.repository.RoomTypeRepository;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @RestController
@@ -28,7 +31,7 @@ public class RoomTypeController {
 
     @GetMapping("/hotel/{hotelId}")
     public List<RoomType> getByHotel(@PathVariable Long hotelId) {
-        return roomTypeRepository.findByHotelId(hotelId);
+        return roomTypeRepository.findByHotelsId(hotelId);
     }
 
     @GetMapping("/{id}")
@@ -39,11 +42,43 @@ public class RoomTypeController {
     }
 
     @PostMapping
-    public ResponseEntity<RoomType> create(@Valid @RequestBody RoomType roomType, @RequestParam Long hotelId) {
-        return hotelRepository.findById(hotelId).map(hotel -> {
-            roomType.setHotel(hotel);
-            return ResponseEntity.ok(roomTypeRepository.save(roomType));
-        }).orElse(ResponseEntity.notFound().build());
+    public RoomType create(@Valid @RequestBody RoomType roomType) {
+        return roomTypeRepository.save(roomType);
+    }
+
+    @PostMapping("/hotel/{hotelId}/{roomTypeId}")
+    @Transactional
+    public ResponseEntity<Void> assignToHotel(@PathVariable Long hotelId, @PathVariable Long roomTypeId) {
+        var hotelOpt = hotelRepository.findById(hotelId);
+        var roomTypeOpt = roomTypeRepository.findById(roomTypeId);
+
+        if (hotelOpt.isEmpty() || roomTypeOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Hotel hotel = hotelOpt.get();
+        RoomType roomType = roomTypeOpt.get();
+        hotel.getRoomTypes().add(roomType);
+        hotelRepository.save(hotel);
+
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/hotel/{hotelId}/{roomTypeId}")
+    @Transactional
+    public ResponseEntity<Void> unassignFromHotel(@PathVariable Long hotelId, @PathVariable Long roomTypeId) {
+        var hotelOpt = hotelRepository.findById(hotelId);
+        var roomTypeOpt = roomTypeRepository.findById(roomTypeId);
+
+        if (hotelOpt.isEmpty() || roomTypeOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Hotel hotel = hotelOpt.get();
+        hotel.getRoomTypes().remove(roomTypeOpt.get());
+        hotelRepository.save(hotel);
+
+        return ResponseEntity.noContent().build();
     }
 
     @PutMapping("/{id}")
@@ -58,11 +93,19 @@ public class RoomTypeController {
     }
 
     @DeleteMapping("/{id}")
+    @Transactional
     public ResponseEntity<Void> delete(@PathVariable Long id) {
-        if (roomTypeRepository.existsById(id)) {
-            roomTypeRepository.deleteById(id);
-            return ResponseEntity.noContent().build();
+        var roomTypeOpt = roomTypeRepository.findById(id);
+        if (roomTypeOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
         }
-        return ResponseEntity.notFound().build();
+
+        RoomType roomType = roomTypeOpt.get();
+        for (Hotel hotel : new ArrayList<>(roomType.getHotels())) {
+            hotel.getRoomTypes().remove(roomType);
+            hotelRepository.save(hotel);
+        }
+        roomTypeRepository.delete(roomType);
+        return ResponseEntity.noContent().build();
     }
 }

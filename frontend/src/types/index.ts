@@ -20,13 +20,13 @@ export interface RoomType {
   description: string;
   capacity: number;
   basePrice: number;
-  hotelId: number;
 }
 
 export interface Availability {
   id: number;
   date: string;
   availableRooms: number;
+  hotelId: number;
   roomTypeId: number;
 }
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { Plus, Pencil, Trash2, X } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, Link as LinkIcon, Link2Off } from 'lucide-react'
 import { api } from '../services/api'
 import { RoomType, Hotel } from '../types'
 
@@ -10,22 +10,27 @@ function getErrorMessage(error: unknown): string {
   return 'Error inesperado'
 }
 
-function RoomTypeModal({ roomType, hotels, onClose, onSave }: {
-  roomType: RoomType | null; hotels: Hotel[]; onClose: () => void; onSave: (rt: any, hotelId: number) => void
+function RoomTypeModal({ roomType, onClose, onSave }: {
+  roomType: RoomType | null; onClose: () => void; onSave: (rt: any) => void
 }) {
   const [form, setForm] = useState({ name: '', description: '', capacity: 2, basePrice: 100 })
-  const [hotelId, setHotelId] = useState(hotels[0]?.id || 0)
 
   useEffect(() => {
     if (roomType) {
-      setForm({ name: roomType.name, description: roomType.description || '', capacity: roomType.capacity, basePrice: roomType.basePrice })
-      setHotelId(roomType.hotelId)
+      setForm({
+        name: roomType.name,
+        description: roomType.description || '',
+        capacity: roomType.capacity,
+        basePrice: roomType.basePrice,
+      })
+    } else {
+      setForm({ name: '', description: '', capacity: 2, basePrice: 100 })
     }
   }, [roomType])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    onSave(form, hotelId)
+    onSave(form)
   }
 
   return (
@@ -37,15 +42,6 @@ function RoomTypeModal({ roomType, hotels, onClose, onSave }: {
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body">
-            {!roomType && (
-              <div className="form-group">
-                <label>Hotel *</label>
-                <select className="form-control" required value={hotelId}
-                        onChange={e => setHotelId(parseInt(e.target.value))}>
-                  {hotels.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
-                </select>
-              </div>
-            )}
             <div className="form-group">
               <label>Nombre *</label>
               <input className="form-control" required value={form.name}
@@ -83,6 +79,7 @@ export default function RoomTypes() {
   const [roomTypes, setRoomTypes] = useState<RoomType[]>([])
   const [hotels, setHotels] = useState<Hotel[]>([])
   const [selectedHotel, setSelectedHotel] = useState<number>(0)
+  const [assignedRoomTypeIds, setAssignedRoomTypeIds] = useState<Set<number>>(new Set())
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState<RoomType | null>(null)
@@ -90,14 +87,19 @@ export default function RoomTypes() {
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      const hotelsData = await api.hotels.getAll(0, 100)
+      const [hotelsData, allRoomTypes] = await Promise.all([
+        api.hotels.getAll(0, 100),
+        api.roomTypes.getAll(),
+      ])
+
       setHotels(hotelsData.content)
+      setRoomTypes(allRoomTypes)
+
       if (selectedHotel > 0) {
-        const rts = await api.roomTypes.getByHotel(selectedHotel)
-        setRoomTypes(rts)
+        const assigned = await api.roomTypes.getByHotel(selectedHotel)
+        setAssignedRoomTypeIds(new Set(assigned.map(rt => rt.id)))
       } else {
-        const rts = await api.roomTypes.getAll()
-        setRoomTypes(rts)
+        setAssignedRoomTypeIds(new Set())
       }
     } catch (e) {
       console.error(e)
@@ -108,12 +110,15 @@ export default function RoomTypes() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  const handleSave = async (form: any, hotelId: number) => {
+  const handleSave = async (form: any) => {
     try {
       if (editing) {
         await api.roomTypes.update(editing.id, form)
       } else {
-        await api.roomTypes.create(form, hotelId)
+        const created = await api.roomTypes.create(form)
+        if (selectedHotel > 0) {
+          await api.roomTypes.assignToHotel(selectedHotel, created.id)
+        }
       }
       setShowModal(false)
       setEditing(null)
@@ -123,8 +128,27 @@ export default function RoomTypes() {
     }
   }
 
+  const handleToggleAssignment = async (roomTypeId: number) => {
+    if (selectedHotel === 0) {
+      alert('Selecciona un hotel para gestionar asignaciones')
+      return
+    }
+
+    try {
+      const assigned = assignedRoomTypeIds.has(roomTypeId)
+      if (assigned) {
+        await api.roomTypes.unassignFromHotel(selectedHotel, roomTypeId)
+      } else {
+        await api.roomTypes.assignToHotel(selectedHotel, roomTypeId)
+      }
+      fetchData()
+    } catch (error) {
+      alert(getErrorMessage(error))
+    }
+  }
+
   const handleDelete = async (id: number) => {
-    if (confirm('Estas seguro de eliminar este tipo de habitacion?')) {
+    if (confirm('Estas seguro de eliminar este tipo de habitacion del catalogo?')) {
       try {
         await api.roomTypes.delete(id)
         fetchData()
@@ -134,21 +158,21 @@ export default function RoomTypes() {
     }
   }
 
-  const getHotelName = (hotelId: number) => hotels.find(h => h.id === hotelId)?.name || '-'
+  const selectedHotelName = hotels.find(h => h.id === selectedHotel)?.name
 
   return (
     <div>
       <div className="page-header">
         <h2>Tipos de Habitacion</h2>
-        <p>Gestiona los tipos de habitacion asociados a cada hotel</p>
+        <p>Catalogo global de tipos de habitacion y asignacion por hotel</p>
       </div>
 
       <div className="card">
         <div className="toolbar">
-          <div className="form-group" style={{ margin: 0, minWidth: 250 }}>
+          <div className="form-group" style={{ margin: 0, minWidth: 300 }}>
             <select className="form-control" value={selectedHotel}
                     onChange={e => setSelectedHotel(parseInt(e.target.value))}>
-              <option value={0}>Todos los hoteles</option>
+              <option value={0}>Seleccionar hotel para gestionar asignaciones...</option>
               {hotels.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
             </select>
           </div>
@@ -157,50 +181,76 @@ export default function RoomTypes() {
           </button>
         </div>
 
+        {selectedHotel > 0 && (
+          <p className="inventory-subtle" style={{ marginBottom: 16 }}>
+            Asignaciones activas para: <strong>{selectedHotelName}</strong>
+          </p>
+        )}
+
         {loading ? (
           <div className="loading">Cargando tipos de habitacion...</div>
         ) : roomTypes.length === 0 ? (
-          <div className="empty-state"><p>No se encontraron tipos de habitacion</p></div>
+          <div className="empty-state"><p>No se encontraron tipos de habitacion en el catalogo</p></div>
         ) : (
           <div className="table-container">
             <table>
               <thead>
-                <tr>
-                  <th>Nombre</th>
-                  <th>Hotel</th>
-                  <th>Capacidad</th>
-                  <th>Precio base</th>
-                  <th>Descripcion</th>
-                  <th>Acciones</th>
-                </tr>
+              <tr>
+                <th>Nombre</th>
+                <th>Capacidad</th>
+                <th>Precio base</th>
+                <th>Descripcion</th>
+                <th>Asignacion hotel</th>
+                <th>Acciones</th>
+              </tr>
               </thead>
               <tbody>
-                {roomTypes.map(rt => (
+              {roomTypes.map(rt => {
+                const assigned = assignedRoomTypeIds.has(rt.id)
+                return (
                   <tr key={rt.id}>
                     <td><strong>{rt.name}</strong></td>
-                    <td>{getHotelName(rt.hotelId)}</td>
                     <td>{rt.capacity} persona{rt.capacity > 1 ? 's' : ''}</td>
                     <td>{rt.basePrice.toFixed(2)} EUR</td>
-                    <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>{rt.description || '-'}</td>
+                    <td style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis' }}>{rt.description || '-'}</td>
+                    <td>
+                      {selectedHotel === 0 ? (
+                        <span className="inventory-subtle">Selecciona hotel</span>
+                      ) : (
+                        <span className={`badge ${assigned ? 'confirmed' : 'cancelled'}`}>
+                          {assigned ? 'Asignado' : 'No asignado'}
+                        </span>
+                      )}
+                    </td>
                     <td>
                       <div className="actions">
-                        <button className="btn-icon" onClick={() => { setEditing(rt); setShowModal(true) }}>
+                        <button className="btn-icon" onClick={() => { setEditing(rt); setShowModal(true) }} title="Editar tipo">
                           <Pencil size={16} />
                         </button>
-                        <button className="btn-icon" onClick={() => handleDelete(rt.id)}>
+                        <button className="btn-icon" onClick={() => handleDelete(rt.id)} title="Eliminar tipo">
                           <Trash2 size={16} />
                         </button>
+                        {selectedHotel > 0 && (
+                          <button
+                            className="btn-icon"
+                            onClick={() => handleToggleAssignment(rt.id)}
+                            title={assigned ? 'Quitar del hotel' : 'Asignar al hotel'}
+                          >
+                            {assigned ? <Link2Off size={16} /> : <LinkIcon size={16} />}
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
-                ))}
+                )
+              })}
               </tbody>
             </table>
           </div>
         )}
       </div>
 
-      {showModal && <RoomTypeModal roomType={editing} hotels={hotels} onClose={() => { setShowModal(false); setEditing(null) }} onSave={handleSave} />}
+      {showModal && <RoomTypeModal roomType={editing} onClose={() => { setShowModal(false); setEditing(null) }} onSave={handleSave} />}
     </div>
   )
 }

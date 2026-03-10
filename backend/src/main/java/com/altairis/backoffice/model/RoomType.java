@@ -1,7 +1,6 @@
 package com.altairis.backoffice.model;
 
-import com.fasterxml.jackson.annotation.JsonBackReference;
-import com.fasterxml.jackson.annotation.JsonManagedReference;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -9,7 +8,10 @@ import jakarta.validation.constraints.Positive;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 
 @Entity
 @Table(name = "room_types")
@@ -36,16 +38,12 @@ public class RoomType {
     @Column(name = "base_price", nullable = false, precision = 10, scale = 2)
     private BigDecimal basePrice;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "hotel_id", nullable = false)
-    @JsonBackReference
-    private Hotel hotel;
-
-    @Column(name = "hotel_id", insertable = false, updatable = false)
-    private Long hotelId;
+    @ManyToMany(mappedBy = "roomTypes")
+    @JsonIgnore
+    private Set<Hotel> hotels = new LinkedHashSet<>();
 
     @OneToMany(mappedBy = "roomType", cascade = CascadeType.ALL, orphanRemoval = true)
-    @JsonManagedReference
+    @JsonIgnore
     private List<Availability> availabilities = new ArrayList<>();
 
     public Long getId() { return id; }
@@ -58,9 +56,20 @@ public class RoomType {
     public void setCapacity(Integer capacity) { this.capacity = capacity; }
     public BigDecimal getBasePrice() { return basePrice; }
     public void setBasePrice(BigDecimal basePrice) { this.basePrice = basePrice; }
-    public Hotel getHotel() { return hotel; }
-    public void setHotel(Hotel hotel) { this.hotel = hotel; }
-    public Long getHotelId() { return hotelId; }
+    public Set<Hotel> getHotels() { return hotels; }
+    public void setHotels(Set<Hotel> hotels) { this.hotels = hotels; }
     public List<Availability> getAvailabilities() { return availabilities; }
     public void setAvailabilities(List<Availability> availabilities) { this.availabilities = availabilities; }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof RoomType roomType)) return false;
+        return id != null && Objects.equals(id, roomType.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return getClass().hashCode();
+    }
 }

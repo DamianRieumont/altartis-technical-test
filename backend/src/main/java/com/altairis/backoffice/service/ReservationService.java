@@ -54,7 +54,7 @@ public class ReservationService {
         reservation.setRoomType(roomType);
 
         if (statusConsumesInventory(reservation.getStatus())) {
-            reserveInventory(roomType.getId(), reservation.getCheckIn(), reservation.getCheckOut());
+            reserveInventory(hotel.getId(), roomType.getId(), reservation.getCheckIn(), reservation.getCheckOut());
         }
 
         return reservationRepository.save(reservation);
@@ -88,11 +88,11 @@ public class ReservationService {
         validateReservationData(payload, hotel, roomType);
 
         if (statusConsumesInventory(existing.getStatus())) {
-            releaseInventory(existing.getRoomTypeId(), existing.getCheckIn(), existing.getCheckOut());
+            releaseInventory(existing.getHotelId(), existing.getRoomTypeId(), existing.getCheckIn(), existing.getCheckOut());
         }
 
         if (statusConsumesInventory(payload.getStatus())) {
-            reserveInventory(roomType.getId(), payload.getCheckIn(), payload.getCheckOut());
+            reserveInventory(hotel.getId(), roomType.getId(), payload.getCheckIn(), payload.getCheckOut());
         }
 
         existing.setGuestName(payload.getGuestName());
@@ -120,11 +120,11 @@ public class ReservationService {
         }
 
         if (statusConsumesInventory(existing.getStatus()) && !statusConsumesInventory(newStatus)) {
-            releaseInventory(existing.getRoomTypeId(), existing.getCheckIn(), existing.getCheckOut());
+            releaseInventory(existing.getHotelId(), existing.getRoomTypeId(), existing.getCheckIn(), existing.getCheckOut());
         }
 
         if (!statusConsumesInventory(existing.getStatus()) && statusConsumesInventory(newStatus)) {
-            reserveInventory(existing.getRoomTypeId(), existing.getCheckIn(), existing.getCheckOut());
+            reserveInventory(existing.getHotelId(), existing.getRoomTypeId(), existing.getCheckIn(), existing.getCheckOut());
         }
 
         existing.setStatus(newStatus);
@@ -137,14 +137,14 @@ public class ReservationService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Reserva no encontrada"));
 
         if (statusConsumesInventory(existing.getStatus())) {
-            releaseInventory(existing.getRoomTypeId(), existing.getCheckIn(), existing.getCheckOut());
+            releaseInventory(existing.getHotelId(), existing.getRoomTypeId(), existing.getCheckIn(), existing.getCheckOut());
         }
 
         reservationRepository.delete(existing);
     }
 
     private void validateReservationData(Reservation reservation, Hotel hotel, RoomType roomType) {
-        if (!roomType.getHotelId().equals(hotel.getId())) {
+        if (!roomTypeRepository.existsByIdAndHotelsId(roomType.getId(), hotel.getId())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "El tipo de habitacion no pertenece al hotel seleccionado");
         }
 
@@ -164,8 +164,9 @@ public class ReservationService {
                 || status == Reservation.Status.COMPLETED;
     }
 
-    private void reserveInventory(Long roomTypeId, LocalDate checkIn, LocalDate checkOut) {
-        List<Availability> range = availabilityRepository.findByRoomTypeIdAndDateBetweenForUpdate(
+    private void reserveInventory(Long hotelId, Long roomTypeId, LocalDate checkIn, LocalDate checkOut) {
+        List<Availability> range = availabilityRepository.findByHotelIdAndRoomTypeIdAndDateBetweenForUpdate(
+                hotelId,
                 roomTypeId,
                 checkIn,
                 checkOut.minusDays(1)
@@ -195,8 +196,9 @@ public class ReservationService {
         }
     }
 
-    private void releaseInventory(Long roomTypeId, LocalDate checkIn, LocalDate checkOut) {
-        List<Availability> range = availabilityRepository.findByRoomTypeIdAndDateBetweenForUpdate(
+    private void releaseInventory(Long hotelId, Long roomTypeId, LocalDate checkIn, LocalDate checkOut) {
+        List<Availability> range = availabilityRepository.findByHotelIdAndRoomTypeIdAndDateBetweenForUpdate(
+                hotelId,
                 roomTypeId,
                 checkIn,
                 checkOut.minusDays(1)

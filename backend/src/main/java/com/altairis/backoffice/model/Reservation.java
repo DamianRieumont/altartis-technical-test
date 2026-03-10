@@ -1,5 +1,6 @@
 package com.altairis.backoffice.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -58,6 +59,7 @@ public class Reservation {
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "room_type_id", nullable = false)
+    @JsonIgnoreProperties({"hotels", "availabilities"})
     private RoomType roomType;
 
     @Column(name = "room_type_id", insertable = false, updatable = false)
@@ -65,6 +67,7 @@ public class Reservation {
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "hotel_id", nullable = false)
+    @JsonIgnoreProperties({"roomTypes"})
     private Hotel hotel;
 
     @Column(name = "hotel_id", insertable = false, updatable = false)

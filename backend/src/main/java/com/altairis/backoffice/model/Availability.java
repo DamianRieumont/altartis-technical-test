@@ -1,6 +1,6 @@
 package com.altairis.backoffice.model;
 
-import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -9,7 +9,7 @@ import java.time.LocalDate;
 
 @Entity
 @Table(name = "availabilities", uniqueConstraints = {
-    @UniqueConstraint(columnNames = {"room_type_id", "date"})
+        @UniqueConstraint(columnNames = {"hotel_id", "room_type_id", "date"})
 })
 public class Availability {
 
@@ -27,8 +27,16 @@ public class Availability {
     private Integer availableRooms;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "hotel_id", nullable = false)
+    @JsonIgnore
+    private Hotel hotel;
+
+    @Column(name = "hotel_id", insertable = false, updatable = false)
+    private Long hotelId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "room_type_id", nullable = false)
-    @JsonBackReference
+    @JsonIgnore
     private RoomType roomType;
 
     @Column(name = "room_type_id", insertable = false, updatable = false)
@@ -40,6 +48,9 @@ public class Availability {
     public void setDate(LocalDate date) { this.date = date; }
     public Integer getAvailableRooms() { return availableRooms; }
     public void setAvailableRooms(Integer availableRooms) { this.availableRooms = availableRooms; }
+    public Hotel getHotel() { return hotel; }
+    public void setHotel(Hotel hotel) { this.hotel = hotel; }
+    public Long getHotelId() { return hotelId; }
     public RoomType getRoomType() { return roomType; }
     public void setRoomType(RoomType roomType) { this.roomType = roomType; }
     public Long getRoomTypeId() { return roomTypeId; }

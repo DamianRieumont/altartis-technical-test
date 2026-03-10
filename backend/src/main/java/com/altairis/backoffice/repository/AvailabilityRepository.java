@@ -13,18 +13,19 @@ import java.util.Optional;
 
 public interface AvailabilityRepository extends JpaRepository<Availability, Long> {
 
-    List<Availability> findByRoomTypeIdAndDateBetweenOrderByDateAsc(Long roomTypeId, LocalDate from, LocalDate to);
+    List<Availability> findByHotelIdAndRoomTypeIdAndDateBetweenOrderByDateAsc(Long hotelId, Long roomTypeId, LocalDate from, LocalDate to);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT a FROM Availability a WHERE a.roomTypeId = :roomTypeId AND a.date BETWEEN :from AND :to ORDER BY a.date ASC")
-    List<Availability> findByRoomTypeIdAndDateBetweenForUpdate(@Param("roomTypeId") Long roomTypeId,
-                                                                @Param("from") LocalDate from,
-                                                                @Param("to") LocalDate to);
+    @Query("SELECT a FROM Availability a WHERE a.hotelId = :hotelId AND a.roomTypeId = :roomTypeId AND a.date BETWEEN :from AND :to ORDER BY a.date ASC")
+    List<Availability> findByHotelIdAndRoomTypeIdAndDateBetweenForUpdate(@Param("hotelId") Long hotelId,
+                                                                          @Param("roomTypeId") Long roomTypeId,
+                                                                          @Param("from") LocalDate from,
+                                                                          @Param("to") LocalDate to);
 
-    @Query("SELECT a FROM Availability a WHERE a.roomType.hotel.id = :hotelId AND a.date BETWEEN :from AND :to ORDER BY a.date ASC")
+    @Query("SELECT a FROM Availability a WHERE a.hotelId = :hotelId AND a.date BETWEEN :from AND :to ORDER BY a.date ASC")
     List<Availability> findByHotelIdAndDateRange(@Param("hotelId") Long hotelId, @Param("from") LocalDate from, @Param("to") LocalDate to);
 
-    Optional<Availability> findByRoomTypeIdAndDate(Long roomTypeId, LocalDate date);
+    Optional<Availability> findByHotelIdAndRoomTypeIdAndDate(Long hotelId, Long roomTypeId, LocalDate date);
 
     @Query("SELECT COALESCE(SUM(a.availableRooms), 0) FROM Availability a WHERE a.date = :date")
     int getTotalAvailableRoomsForDate(@Param("date") LocalDate date);

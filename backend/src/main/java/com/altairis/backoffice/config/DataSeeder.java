@@ -37,18 +37,45 @@ public class DataSeeder {
             }
 
             Random random = new Random(42);
-            seedDemoData(hotelRepo, roomTypeRepo, availRepo, resRepo, random);
+            List<RoomType> catalog = createRoomTypeCatalog(roomTypeRepo);
+
+            seedDemoData(hotelRepo, availRepo, resRepo, catalog, random);
 
             if ("large".equalsIgnoreCase(seedMode)) {
-                seedLargeData(hotelRepo, roomTypeRepo, availRepo, resRepo, largeHotelCount, random);
+                seedLargeData(hotelRepo, availRepo, resRepo, catalog, largeHotelCount, random);
             }
         };
     }
 
+    private List<RoomType> createRoomTypeCatalog(RoomTypeRepository roomTypeRepo) {
+        if (roomTypeRepo.count() > 0) {
+            return roomTypeRepo.findAll();
+        }
+
+        String[][] roomData = {
+                {"Individual", "Habitacion individual con cama sencilla", "1", "80"},
+                {"Doble", "Habitacion doble con cama matrimonial", "2", "120"},
+                {"Suite Junior", "Suite con sala de estar separada", "2", "200"},
+                {"Suite Premium", "Suite de lujo con terraza y jacuzzi", "4", "350"},
+                {"Familiar", "Habitacion amplia con dos camas dobles", "4", "180"},
+        };
+
+        List<RoomType> catalog = new ArrayList<>();
+        for (String[] rd : roomData) {
+            RoomType roomType = new RoomType();
+            roomType.setName(rd[0]);
+            roomType.setDescription(rd[1]);
+            roomType.setCapacity(Integer.parseInt(rd[2]));
+            roomType.setBasePrice(new BigDecimal(rd[3]));
+            catalog.add(roomTypeRepo.save(roomType));
+        }
+        return catalog;
+    }
+
     private void seedDemoData(HotelRepository hotelRepo,
-                              RoomTypeRepository roomTypeRepo,
                               AvailabilityRepository availRepo,
                               ReservationRepository resRepo,
+                              List<RoomType> catalog,
                               Random random) {
 
         String[][] hotelData = {
@@ -60,14 +87,6 @@ public class DataSeeder {
                 {"Hotel Altairis Lisboa", "Avenida da Liberdade 180", "Lisbon", "Portugal", "4", "+351 21 340 5678", "lisboa@altairis.com", "Hotel con encanto en Lisboa"},
                 {"Hotel Altairis Berlin", "Unter den Linden 77", "Berlin", "Germany", "4", "+49 30 2023 4567", "berlin@altairis.com", "Hotel moderno en el centro de Berlin"},
                 {"Hotel Altairis Amsterdam", "Dam Square 12", "Amsterdam", "Netherlands", "4", "+31 20 555 6789", "amsterdam@altairis.com", "Hotel en la plaza Dam de Amsterdam"},
-        };
-
-        String[][] roomData = {
-                {"Individual", "Habitacion individual con cama sencilla", "1", "80"},
-                {"Doble", "Habitacion doble con cama matrimonial", "2", "120"},
-                {"Suite Junior", "Suite con sala de estar separada", "2", "200"},
-                {"Suite Premium", "Suite de lujo con terraza y jacuzzi", "4", "350"},
-                {"Familiar", "Habitacion amplia con dos camas dobles", "4", "180"},
         };
 
         Reservation.Status[] statuses = {
@@ -94,23 +113,17 @@ public class DataSeeder {
             hotel.setEmail(hd[6]);
             hotel.setDescription(hd[7]);
             hotel.setActive(true);
+            hotel.getRoomTypes().addAll(catalog);
             hotel = hotelRepo.save(hotel);
 
-            for (String[] rd : roomData) {
-                RoomType roomType = new RoomType();
-                roomType.setName(rd[0]);
-                roomType.setDescription(rd[1]);
-                roomType.setCapacity(Integer.parseInt(rd[2]));
-                roomType.setBasePrice(new BigDecimal(rd[3]));
-                roomType.setHotel(hotel);
-                roomType = roomTypeRepo.save(roomType);
-
+            for (RoomType roomType : catalog) {
                 LocalDate start = LocalDate.now();
                 List<Availability> availabilities = new ArrayList<>();
                 for (int d = 0; d < 30; d++) {
                     Availability availability = new Availability();
                     availability.setDate(start.plusDays(d));
                     availability.setAvailableRooms(random.nextInt(10) + 1);
+                    availability.setHotel(hotel);
                     availability.setRoomType(roomType);
                     availabilities.add(availability);
                 }
@@ -130,7 +143,7 @@ public class DataSeeder {
                     reservation.setRoomType(roomType);
                     resRepo.save(reservation);
                     if (statusConsumesInventory(reservation.getStatus())) {
-                        decrementInventory(availRepo, roomType.getId(), reservation.getCheckIn(), reservation.getCheckOut());
+                        decrementInventory(availRepo, hotel.getId(), roomType.getId(), reservation.getCheckIn(), reservation.getCheckOut());
                     }
                     resIndex++;
                 }
@@ -139,9 +152,9 @@ public class DataSeeder {
     }
 
     private void seedLargeData(HotelRepository hotelRepo,
-                               RoomTypeRepository roomTypeRepo,
                                AvailabilityRepository availRepo,
                                ReservationRepository resRepo,
+                               List<RoomType> catalog,
                                int largeHotelCount,
                                Random random) {
 
@@ -150,6 +163,8 @@ public class DataSeeder {
 
         LocalDate startDate = LocalDate.now();
         int reservationIndex = 1;
+
+        List<RoomType> assignedTypes = catalog.subList(0, Math.min(3, catalog.size()));
 
         for (int i = 1; i <= largeHotelCount; i++) {
             Hotel hotel = new Hotel();
@@ -162,44 +177,45 @@ public class DataSeeder {
             hotel.setEmail("hotel" + i + "@altairis-demo.com");
             hotel.setDescription("Hotel generado para pruebas de volumen y paginacion.");
             hotel.setActive(i % 10 != 0);
+            hotel.getRoomTypes().addAll(assignedTypes);
             hotel = hotelRepo.save(hotel);
 
-            for (int rt = 1; rt <= 3; rt++) {
-                RoomType roomType = new RoomType();
-                roomType.setName(rt == 1 ? "Standard" : rt == 2 ? "Superior" : "Family");
-                roomType.setDescription("Tipo de habitacion demo para test de carga");
-                roomType.setCapacity(rt == 3 ? 4 : 2);
-                roomType.setBasePrice(BigDecimal.valueOf(90 + (rt * 35L) + (i % 20)));
-                roomType.setHotel(hotel);
-                roomType = roomTypeRepo.save(roomType);
+            for (int idx = 0; idx < assignedTypes.size(); idx++) {
+                RoomType roomType = assignedTypes.get(idx);
 
                 List<Availability> availabilities = new ArrayList<>();
                 for (int d = 0; d < 14; d++) {
                     Availability availability = new Availability();
                     availability.setDate(startDate.plusDays(d));
                     availability.setAvailableRooms(5 + random.nextInt(20));
+                    availability.setHotel(hotel);
                     availability.setRoomType(roomType);
                     availabilities.add(availability);
                 }
                 availRepo.saveAll(availabilities);
 
-                if (rt <= 2) {
+                if (idx < 2) {
                     Reservation reservation = new Reservation();
                     reservation.setLocator(String.format("ALT-LARGE-%06d", reservationIndex++));
-                    reservation.setGuestName("Guest Demo " + i + "-" + rt);
-                    reservation.setGuestEmail("guest" + i + rt + "@demo.com");
+                    reservation.setGuestName("Guest Demo " + i + "-" + idx);
+                    reservation.setGuestEmail("guest" + i + idx + "@demo.com");
                     reservation.setGuestPhone("+34 600 000 000");
-                    reservation.setCheckIn(startDate.plusDays(random.nextInt(6)));
-                    reservation.setCheckOut(startDate.plusDays(6 + random.nextInt(6)));
-                    reservation.setNumGuests(rt == 1 ? 1 : 2);
+
+                    LocalDate checkIn = startDate.plusDays(random.nextInt(6));
+                    LocalDate checkOut = checkIn.plusDays(2 + random.nextInt(4));
+                    reservation.setCheckIn(checkIn);
+                    reservation.setCheckOut(checkOut);
+
+                    reservation.setNumGuests(Math.min(roomType.getCapacity(), 2));
                     reservation.setTotalPrice(roomType.getBasePrice().multiply(BigDecimal.valueOf(3)));
-                    reservation.setStatus(rt == 1 ? Reservation.Status.CONFIRMED : Reservation.Status.PENDING);
+                    reservation.setStatus(idx == 0 ? Reservation.Status.CONFIRMED : Reservation.Status.PENDING);
                     reservation.setHotel(hotel);
                     reservation.setRoomType(roomType);
                     reservation.setNotes("Reserva generada automaticamente para dataset masivo.");
                     resRepo.save(reservation);
+
                     if (statusConsumesInventory(reservation.getStatus())) {
-                        decrementInventory(availRepo, roomType.getId(), reservation.getCheckIn(), reservation.getCheckOut());
+                        decrementInventory(availRepo, hotel.getId(), roomType.getId(), reservation.getCheckIn(), reservation.getCheckOut());
                     }
                 }
             }
@@ -212,8 +228,13 @@ public class DataSeeder {
                 || status == Reservation.Status.COMPLETED;
     }
 
-    private void decrementInventory(AvailabilityRepository availRepo, Long roomTypeId, LocalDate checkIn, LocalDate checkOut) {
-        List<Availability> range = availRepo.findByRoomTypeIdAndDateBetweenOrderByDateAsc(roomTypeId, checkIn, checkOut.minusDays(1));
+    private void decrementInventory(AvailabilityRepository availRepo,
+                                    Long hotelId,
+                                    Long roomTypeId,
+                                    LocalDate checkIn,
+                                    LocalDate checkOut) {
+
+        List<Availability> range = availRepo.findByHotelIdAndRoomTypeIdAndDateBetweenOrderByDateAsc(hotelId, roomTypeId, checkIn, checkOut.minusDays(1));
         Map<LocalDate, Availability> byDate = new HashMap<>();
         for (Availability availability : range) {
             byDate.put(availability.getDate(), availability);

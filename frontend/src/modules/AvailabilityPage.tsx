@@ -117,7 +117,7 @@ export default function AvailabilityPage() {
 
   const handleBulkSave = async (roomTypeId: number, fromDate: string, toDate: string, rooms: number) => {
     try {
-      await api.availability.createBulk(roomTypeId, fromDate, toDate, rooms)
+      await api.availability.createBulk(selectedHotel, roomTypeId, fromDate, toDate, rooms)
       setShowModal(false)
       fetchData()
     } catch (error) {

@@ -107,6 +107,13 @@ function HotelModal({ hotel, onClose, onSave }: { hotel: Hotel | null; onClose: 
   )
 }
 
+function assignedSummary(hotel: Hotel): string {
+  const names = hotel.roomTypes?.map(rt => rt.name) || []
+  if (names.length === 0) return '-'
+  if (names.length <= 2) return names.join(', ')
+  return `${names.slice(0, 2).join(', ')} +${names.length - 2}`
+}
+
 export default function Hotels() {
   const [hotels, setHotels] = useState<Hotel[]>([])
   const [page, setPage] = useState(0)
@@ -167,7 +174,7 @@ export default function Hotels() {
     <div>
       <div className="page-header">
         <h2>Hoteles</h2>
-        <p>Gestion del catalogo de hoteles de la cadena</p>
+        <p>Gestion del catalogo de hoteles y tipos de habitacion asignados</p>
       </div>
 
       <div className="card">
@@ -196,6 +203,7 @@ export default function Hotels() {
                     <th>Ciudad</th>
                     <th>Pais</th>
                     <th>Estrellas</th>
+                    <th>Tipos asignados</th>
                     <th>Contacto</th>
                     <th>Estado</th>
                     <th>Acciones</th>
@@ -208,6 +216,7 @@ export default function Hotels() {
                       <td>{hotel.city}</td>
                       <td>{hotel.country}</td>
                       <td><span className="stars">{'★'.repeat(hotel.starRating || 0)}</span></td>
+                      <td>{assignedSummary(hotel)}</td>
                       <td>{hotel.email || hotel.phone || '-'}</td>
                       <td>
                         <span className={`badge ${hotel.active ? 'active' : 'cancelled'}`}>

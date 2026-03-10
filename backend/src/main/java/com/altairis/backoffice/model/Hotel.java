@@ -1,12 +1,12 @@
 package com.altairis.backoffice.model;
 
-import com.fasterxml.jackson.annotation.JsonManagedReference;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "hotels")
@@ -50,9 +50,14 @@ public class Hotel {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    @OneToMany(mappedBy = "hotel", cascade = CascadeType.ALL, orphanRemoval = true)
-    @JsonManagedReference
-    private List<RoomType> roomTypes = new ArrayList<>();
+    @ManyToMany
+    @JoinTable(
+            name = "hotel_room_types",
+            joinColumns = @JoinColumn(name = "hotel_id"),
+            inverseJoinColumns = @JoinColumn(name = "room_type_id")
+    )
+    @JsonIgnoreProperties({"hotels", "availabilities"})
+    private Set<RoomType> roomTypes = new LinkedHashSet<>();
 
     @PrePersist
     protected void onCreate() {
@@ -87,6 +92,6 @@ public class Hotel {
     public void setActive(boolean active) { this.active = active; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
-    public List<RoomType> getRoomTypes() { return roomTypes; }
-    public void setRoomTypes(List<RoomType> roomTypes) { this.roomTypes = roomTypes; }
+    public Set<RoomType> getRoomTypes() { return roomTypes; }
+    public void setRoomTypes(Set<RoomType> roomTypes) { this.roomTypes = roomTypes; }
 }

@@ -41,22 +41,26 @@ export const api = {
     getAll: () => request<any[]>('/room-types'),
     getByHotel: (hotelId: number) => request<any[]>(`/room-types/hotel/${hotelId}`),
     getById: (id: number) => request<any>(`/room-types/${id}`),
-    create: (roomType: any, hotelId: number) =>
-      request<any>(`/room-types?hotelId=${hotelId}`, { method: 'POST', body: JSON.stringify(roomType) }),
+    create: (roomType: any) =>
+      request<any>('/room-types', { method: 'POST', body: JSON.stringify(roomType) }),
+    assignToHotel: (hotelId: number, roomTypeId: number) =>
+      request<void>(`/room-types/hotel/${hotelId}/${roomTypeId}`, { method: 'POST' }),
+    unassignFromHotel: (hotelId: number, roomTypeId: number) =>
+      request<void>(`/room-types/hotel/${hotelId}/${roomTypeId}`, { method: 'DELETE' }),
     update: (id: number, roomType: any) =>
       request<any>(`/room-types/${id}`, { method: 'PUT', body: JSON.stringify(roomType) }),
     delete: (id: number) => request<void>(`/room-types/${id}`, { method: 'DELETE' }),
   },
 
   availability: {
-    getByRoomType: (roomTypeId: number, from: string, to: string) =>
-      request<any[]>(`/availability/room-type/${roomTypeId}?from=${from}&to=${to}`),
+    getByRoomType: (hotelId: number, roomTypeId: number, from: string, to: string) =>
+      request<any[]>(`/availability/room-type/${roomTypeId}?hotelId=${hotelId}&from=${from}&to=${to}`),
     getByHotel: (hotelId: number, from: string, to: string) =>
       request<any[]>(`/availability/hotel/${hotelId}?from=${from}&to=${to}`),
-    create: (availability: any, roomTypeId: number) =>
-      request<any>(`/availability?roomTypeId=${roomTypeId}`, { method: 'POST', body: JSON.stringify(availability) }),
-    createBulk: (roomTypeId: number, from: string, to: string, rooms: number) =>
-      request<any[]>(`/availability/bulk?roomTypeId=${roomTypeId}&from=${from}&to=${to}&rooms=${rooms}`, { method: 'POST' }),
+    create: (availability: any, hotelId: number, roomTypeId: number) =>
+      request<any>(`/availability?hotelId=${hotelId}&roomTypeId=${roomTypeId}`, { method: 'POST', body: JSON.stringify(availability) }),
+    createBulk: (hotelId: number, roomTypeId: number, from: string, to: string, rooms: number) =>
+      request<any[]>(`/availability/bulk?hotelId=${hotelId}&roomTypeId=${roomTypeId}&from=${from}&to=${to}&rooms=${rooms}`, { method: 'POST' }),
     update: (id: number, availability: any) =>
       request<any>(`/availability/${id}`, { method: 'PUT', body: JSON.stringify(availability) }),
     delete: (id: number) => request<void>(`/availability/${id}`, { method: 'DELETE' }),
