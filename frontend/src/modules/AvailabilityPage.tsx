@@ -6,6 +6,11 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { api } from '../services/api'
 import { Hotel, RoomType, Availability } from '../types'
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  return 'Error inesperado'
+}
+
 function BulkModal({ roomTypes, onClose, onSave }: {
   roomTypes: RoomType[]; onClose: () => void; onSave: (roomTypeId: number, from: string, to: string, rooms: number) => void
 }) {
@@ -96,9 +101,13 @@ export default function AvailabilityPage() {
   useEffect(() => { fetchData() }, [fetchData])
 
   const handleBulkSave = async (roomTypeId: number, fromDate: string, toDate: string, rooms: number) => {
-    await api.availability.createBulk(roomTypeId, fromDate, toDate, rooms)
-    setShowModal(false)
-    fetchData()
+    try {
+      await api.availability.createBulk(roomTypeId, fromDate, toDate, rooms)
+      setShowModal(false)
+      fetchData()
+    } catch (error) {
+      alert(getErrorMessage(error))
+    }
   }
 
   const chartData = availability.reduce((acc: any[], a) => {

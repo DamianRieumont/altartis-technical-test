@@ -5,6 +5,11 @@ import { Plus, Pencil, Trash2, X } from 'lucide-react'
 import { api } from '../services/api'
 import { RoomType, Hotel } from '../types'
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  return 'Error inesperado'
+}
+
 function RoomTypeModal({ roomType, hotels, onClose, onSave }: {
   roomType: RoomType | null; hotels: Hotel[]; onClose: () => void; onSave: (rt: any, hotelId: number) => void
 }) {
@@ -104,20 +109,28 @@ export default function RoomTypes() {
   useEffect(() => { fetchData() }, [fetchData])
 
   const handleSave = async (form: any, hotelId: number) => {
-    if (editing) {
-      await api.roomTypes.update(editing.id, form)
-    } else {
-      await api.roomTypes.create(form, hotelId)
+    try {
+      if (editing) {
+        await api.roomTypes.update(editing.id, form)
+      } else {
+        await api.roomTypes.create(form, hotelId)
+      }
+      setShowModal(false)
+      setEditing(null)
+      fetchData()
+    } catch (error) {
+      alert(getErrorMessage(error))
     }
-    setShowModal(false)
-    setEditing(null)
-    fetchData()
   }
 
   const handleDelete = async (id: number) => {
     if (confirm('Estas seguro de eliminar este tipo de habitacion?')) {
-      await api.roomTypes.delete(id)
-      fetchData()
+      try {
+        await api.roomTypes.delete(id)
+        fetchData()
+      } catch (error) {
+        alert(getErrorMessage(error))
+      }
     }
   }
 

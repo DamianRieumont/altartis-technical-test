@@ -40,6 +40,7 @@ La aplicacion estara disponible en:
 3. **Tipos de habitacion:** Gestion de tipos asociados a cada hotel
 4. **Disponibilidad:** Registro masivo de disponibilidad con vista grafica de inventario
 5. **Reservas:** Gestion de reservas con cambio de estado, busqueda y paginacion
+6. **Reglas operativas:** Validacion de capacidad por tipo de habitacion y control de overbooking
 
 ## Desarrollo local
 
@@ -55,3 +56,14 @@ cd frontend
 npm install
 npm run dev
 ```
+
+## Dataset masivo para demo de volumen
+
+Puedes arrancar con una carga grande de datos para demostrar paginacion/busqueda a escala:
+
+```bash
+APP_SEED_MODE=large APP_SEED_LARGE_HOTELS=5000 docker-compose up --build
+```
+
+- `APP_SEED_MODE=demo` (por defecto): dataset base navegable.
+- `APP_SEED_MODE=large`: genera hoteles adicionales con inventario y reservas.

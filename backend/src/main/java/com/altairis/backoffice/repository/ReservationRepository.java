@@ -21,6 +21,8 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
 
     List<Reservation> findByCheckInBetween(LocalDate from, LocalDate to);
 
+    long countByCheckInBetween(LocalDate from, LocalDate to);
+
     long countByStatus(Reservation.Status status);
 
     @Query("SELECT r FROM Reservation r WHERE r.checkIn <= :date AND r.checkOut >= :date AND r.status != 'CANCELLED'")

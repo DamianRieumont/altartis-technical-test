@@ -6,7 +6,18 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     ...options,
   });
   if (!response.ok) {
-    throw new Error(`Error ${response.status}: ${response.statusText}`);
+    let message = `Error ${response.status}: ${response.statusText}`;
+    try {
+      const body = await response.json();
+      if (body?.message) {
+        message = body.message;
+      } else if (body?.error) {
+        message = body.error;
+      }
+    } catch {
+      // Ignore parse errors and keep the default message.
+    }
+    throw new Error(message);
   }
   if (response.status === 204) return undefined as T;
   return response.json();

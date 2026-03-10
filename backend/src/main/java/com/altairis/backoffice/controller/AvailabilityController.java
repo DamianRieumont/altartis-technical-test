@@ -1,10 +1,12 @@
 package com.altairis.backoffice.controller;
 
+import com.altairis.backoffice.exception.ApiException;
 import com.altairis.backoffice.model.Availability;
 import com.altairis.backoffice.repository.AvailabilityRepository;
 import com.altairis.backoffice.repository.RoomTypeRepository;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -28,6 +30,7 @@ public class AvailabilityController {
             @PathVariable Long roomTypeId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        validateDateRange(from, to);
         return availabilityRepository.findByRoomTypeIdAndDateBetweenOrderByDateAsc(roomTypeId, from, to);
     }
 
@@ -36,6 +39,7 @@ public class AvailabilityController {
             @PathVariable Long hotelId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        validateDateRange(from, to);
         return availabilityRepository.findByHotelIdAndDateRange(hotelId, from, to);
     }
 
@@ -53,6 +57,12 @@ public class AvailabilityController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam Integer rooms) {
+
+        validateDateRange(from, to);
+        if (rooms < 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "El numero de habitaciones no puede ser negativo");
+        }
+
         return roomTypeRepository.findById(roomTypeId).map(roomType -> {
             List<Availability> created = from.datesUntil(to.plusDays(1)).map(date -> {
                 var existing = availabilityRepository.findByRoomTypeIdAndDate(roomTypeId, date);
@@ -86,5 +96,11 @@ public class AvailabilityController {
             return ResponseEntity.noContent().build();
         }
         return ResponseEntity.notFound().build();
+    }
+
+    private void validateDateRange(LocalDate from, LocalDate to) {
+        if (from == null || to == null || from.isAfter(to)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "El rango de fechas es invalido");
+        }
     }
 }

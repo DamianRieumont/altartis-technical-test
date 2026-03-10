@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Positive;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(name = "reservations")
@@ -78,8 +79,8 @@ public class Reservation {
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
-        if (locator == null) {
-            locator = "ALT-" + System.currentTimeMillis();
+        if (locator == null || locator.isBlank()) {
+            locator = "ALT-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
         }
     }
 

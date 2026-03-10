@@ -5,6 +5,11 @@ import { Search, Plus, Pencil, Trash2, X } from 'lucide-react'
 import { api } from '../services/api'
 import { Reservation, Hotel, RoomType, Page } from '../types'
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  return 'Error inesperado'
+}
+
 const STATUS_LABELS: Record<string, string> = {
   PENDING: 'Pendiente',
   CONFIRMED: 'Confirmada',
@@ -183,25 +188,37 @@ export default function Reservations() {
   useEffect(() => { fetchData() }, [fetchData])
 
   const handleSave = async (form: any, hotelId: number, roomTypeId: number) => {
-    if (editing) {
-      await api.reservations.update(editing.id, { ...form, hotel: { id: hotelId }, roomType: { id: roomTypeId } })
-    } else {
-      await api.reservations.create(form, hotelId, roomTypeId)
+    try {
+      if (editing) {
+        await api.reservations.update(editing.id, { ...form, hotel: { id: hotelId }, roomType: { id: roomTypeId } })
+      } else {
+        await api.reservations.create(form, hotelId, roomTypeId)
+      }
+      setShowModal(false)
+      setEditing(null)
+      fetchData()
+    } catch (error) {
+      alert(getErrorMessage(error))
     }
-    setShowModal(false)
-    setEditing(null)
-    fetchData()
   }
 
   const handleStatusChange = async (id: number, status: string) => {
-    await api.reservations.updateStatus(id, status)
-    fetchData()
+    try {
+      await api.reservations.updateStatus(id, status)
+      fetchData()
+    } catch (error) {
+      alert(getErrorMessage(error))
+    }
   }
 
   const handleDelete = async (id: number) => {
     if (confirm('Estas seguro de eliminar esta reserva?')) {
-      await api.reservations.delete(id)
-      fetchData()
+      try {
+        await api.reservations.delete(id)
+        fetchData()
+      } catch (error) {
+        alert(getErrorMessage(error))
+      }
     }
   }
 

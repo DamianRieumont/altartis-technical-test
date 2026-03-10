@@ -1,7 +1,9 @@
 package com.altairis.backoffice.repository;
 
 import com.altairis.backoffice.model.Availability;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -12,6 +14,12 @@ import java.util.Optional;
 public interface AvailabilityRepository extends JpaRepository<Availability, Long> {
 
     List<Availability> findByRoomTypeIdAndDateBetweenOrderByDateAsc(Long roomTypeId, LocalDate from, LocalDate to);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT a FROM Availability a WHERE a.roomTypeId = :roomTypeId AND a.date BETWEEN :from AND :to ORDER BY a.date ASC")
+    List<Availability> findByRoomTypeIdAndDateBetweenForUpdate(@Param("roomTypeId") Long roomTypeId,
+                                                                @Param("from") LocalDate from,
+                                                                @Param("to") LocalDate to);
 
     @Query("SELECT a FROM Availability a WHERE a.roomType.hotel.id = :hotelId AND a.date BETWEEN :from AND :to ORDER BY a.date ASC")
     List<Availability> findByHotelIdAndDateRange(@Param("hotelId") Long hotelId, @Param("from") LocalDate from, @Param("to") LocalDate to);

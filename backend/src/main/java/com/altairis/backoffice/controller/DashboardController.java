@@ -23,9 +23,9 @@ public class DashboardController {
     private final AvailabilityRepository availabilityRepository;
 
     public DashboardController(HotelRepository hotelRepository,
-                                RoomTypeRepository roomTypeRepository,
-                                ReservationRepository reservationRepository,
-                                AvailabilityRepository availabilityRepository) {
+                               RoomTypeRepository roomTypeRepository,
+                               ReservationRepository reservationRepository,
+                               AvailabilityRepository availabilityRepository) {
         this.hotelRepository = hotelRepository;
         this.roomTypeRepository = roomTypeRepository;
         this.reservationRepository = reservationRepository;
@@ -50,9 +50,8 @@ public class DashboardController {
         dashboard.put("todayAvailableRooms", availabilityRepository.getTotalAvailableRoomsForDate(today));
         dashboard.put("todayActiveReservations", reservationRepository.findActiveReservationsForDate(today).size());
 
-        // Reservations for last 7 days
-        var recentReservations = reservationRepository.findByCheckInBetween(today.minusDays(7), today.plusDays(7));
-        dashboard.put("upcomingReservations", recentReservations.size());
+        long upcomingReservations = reservationRepository.countByCheckInBetween(today, today.plusDays(7));
+        dashboard.put("upcomingReservations", upcomingReservations);
 
         return dashboard;
     }

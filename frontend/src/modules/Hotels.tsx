@@ -5,6 +5,11 @@ import { Search, Plus, Pencil, Trash2, X } from 'lucide-react'
 import { api } from '../services/api'
 import { Hotel, Page } from '../types'
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  return 'Error inesperado'
+}
+
 function HotelModal({ hotel, onClose, onSave }: { hotel: Hotel | null; onClose: () => void; onSave: (h: any) => void }) {
   const [form, setForm] = useState({
     name: '', address: '', city: '', country: '', starRating: 4,
@@ -127,20 +132,28 @@ export default function Hotels() {
   useEffect(() => { fetchHotels() }, [fetchHotels])
 
   const handleSave = async (form: any) => {
-    if (editingHotel) {
-      await api.hotels.update(editingHotel.id, form)
-    } else {
-      await api.hotels.create(form)
+    try {
+      if (editingHotel) {
+        await api.hotels.update(editingHotel.id, form)
+      } else {
+        await api.hotels.create(form)
+      }
+      setShowModal(false)
+      setEditingHotel(null)
+      fetchHotels()
+    } catch (error) {
+      alert(getErrorMessage(error))
     }
-    setShowModal(false)
-    setEditingHotel(null)
-    fetchHotels()
   }
 
   const handleDelete = async (id: number) => {
     if (confirm('Estas seguro de eliminar este hotel?')) {
-      await api.hotels.delete(id)
-      fetchHotels()
+      try {
+        await api.hotels.delete(id)
+        fetchHotels()
+      } catch (error) {
+        alert(getErrorMessage(error))
+      }
     }
   }
 

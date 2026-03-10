@@ -27,6 +27,8 @@ services:
       DB_NAME: altairis
       DB_USER: altairis
       DB_PASSWORD: altairis
+      APP_SEED_MODE: ${APP_SEED_MODE:-demo}
+      APP_SEED_LARGE_HOTELS: ${APP_SEED_LARGE_HOTELS:-2000}
     depends_on:
       db:
         condition: service_healthy
