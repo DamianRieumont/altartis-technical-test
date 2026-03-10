@@ -1,14 +1,23 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
-import { Plus, X } from 'lucide-react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { useEffect, useMemo, useState, useCallback } from 'react'
+import { Plus, X, Boxes, CalendarDays, AlertTriangle, Ban } from 'lucide-react'
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { api } from '../services/api'
 import { Hotel, RoomType, Availability } from '../types'
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message
   return 'Error inesperado'
+}
+
+function formatDateShort(value: string): string {
+  return value.slice(5)
+}
+
+type ChartPoint = {
+  date: string
+  rooms: number
 }
 
 function BulkModal({ roomTypes, onClose, onSave }: {
@@ -67,15 +76,21 @@ export default function AvailabilityPage() {
   const [selectedHotel, setSelectedHotel] = useState<number>(0)
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [loadError, setLoadError] = useState<string>('')
 
   const today = new Date()
-  const [from] = useState(today.toISOString().split('T')[0])
-  const toDate = new Date(today)
-  toDate.setDate(toDate.getDate() + 30)
-  const [to] = useState(toDate.toISOString().split('T')[0])
+  const initialFrom = today.toISOString().split('T')[0]
+  const initialToDate = new Date(today)
+  initialToDate.setDate(initialToDate.getDate() + 30)
+  const initialTo = initialToDate.toISOString().split('T')[0]
+
+  const [from, setFrom] = useState(initialFrom)
+  const [to, setTo] = useState(initialTo)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
+    setLoadError('')
+
     try {
       const hotelsData = await api.hotels.getAll(0, 100)
       setHotels(hotelsData.content)
@@ -91,8 +106,8 @@ export default function AvailabilityPage() {
         setRoomTypes([])
         setAvailability([])
       }
-    } catch (e) {
-      console.error(e)
+    } catch (error) {
+      setLoadError(getErrorMessage(error))
     } finally {
       setLoading(false)
     }
@@ -110,31 +125,93 @@ export default function AvailabilityPage() {
     }
   }
 
-  const chartData = availability.reduce((acc: any[], a) => {
-    const existing = acc.find(d => d.date === a.date)
-    if (existing) {
-      existing.rooms += a.availableRooms
-    } else {
-      acc.push({ date: a.date, rooms: a.availableRooms })
+  const chartData = useMemo<ChartPoint[]>(() => {
+    const totals = new Map<string, number>()
+
+    for (const item of availability) {
+      totals.set(item.date, (totals.get(item.date) || 0) + item.availableRooms)
     }
-    return acc
-  }, []).sort((a, b) => a.date.localeCompare(b.date))
+
+    return Array.from(totals.entries())
+      .map(([date, rooms]) => ({ date, rooms }))
+      .sort((a, b) => a.date.localeCompare(b.date))
+  }, [availability])
+
+  const dateColumns = useMemo(() => {
+    return Array.from(new Set(availability.map(a => a.date))).sort((a, b) => a.localeCompare(b))
+  }, [availability])
+
+  const roomTypeDateMap = useMemo(() => {
+    const map = new Map<number, Map<string, number>>()
+    for (const item of availability) {
+      if (!map.has(item.roomTypeId)) {
+        map.set(item.roomTypeId, new Map())
+      }
+      map.get(item.roomTypeId)!.set(item.date, item.availableRooms)
+    }
+    return map
+  }, [availability])
+
+  const totalByDate = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const point of chartData) {
+      map.set(point.date, point.rooms)
+    }
+    return map
+  }, [chartData])
+
+  const todayIso = new Date().toISOString().split('T')[0]
+  const totalToday = totalByDate.get(todayIso) || 0
+  const totalSlots = availability.length
+  const soldOutSlots = availability.filter(a => a.availableRooms === 0).length
+  const lowSlots = availability.filter(a => a.availableRooms > 0 && a.availableRooms <= 3).length
+  const averagePerDay = chartData.length > 0 ? chartData.reduce((acc, cur) => acc + cur.rooms, 0) / chartData.length : 0
+  const maxDailyInventory = chartData.length > 0 ? Math.max(...chartData.map(point => point.rooms)) : 0
+  const todayAvailabilityPct = maxDailyInventory > 0 ? (totalToday / maxDailyInventory) * 100 : 0
+
+  const chartPercentData = useMemo(() => {
+    return chartData.map(point => ({
+      ...point,
+      availabilityPct: maxDailyInventory > 0 ? Number(((point.rooms / maxDailyInventory) * 100).toFixed(1)) : 0,
+    }))
+  }, [chartData, maxDailyInventory])
 
   return (
     <div>
       <div className="page-header">
         <h2>Disponibilidad e Inventario</h2>
-        <p>Consulta y registra la disponibilidad de habitaciones por hotel</p>
+        <p>Inventario = habitaciones disponibles por tipo y por fecha para la operativa diaria</p>
+      </div>
+
+      <div className="inventory-help" style={{ marginBottom: 16 }}>
+        <h4>Como leer esta vista</h4>
+        <p>
+          El inventario operativo muestra cuantas habitaciones quedan para vender en cada fecha y tipo de habitacion.
+          Verde indica disponibilidad saludable, amarillo disponibilidad baja y rojo sin stock.
+        </p>
       </div>
 
       <div className="card" style={{ marginBottom: 24 }}>
-        <div className="toolbar">
-          <div className="form-group" style={{ margin: 0, minWidth: 250 }}>
-            <select className="form-control" value={selectedHotel}
-                    onChange={e => setSelectedHotel(parseInt(e.target.value))}>
-              <option value={0}>Seleccionar hotel...</option>
-              {hotels.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
-            </select>
+        <div className="inventory-toolbar">
+          <div className="inventory-filters">
+            <div className="form-group inventory-filter-item">
+              <label>Hotel</label>
+              <select className="form-control" value={selectedHotel}
+                      onChange={e => setSelectedHotel(parseInt(e.target.value))}>
+                <option value={0}>Seleccionar hotel...</option>
+                {hotels.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+              </select>
+            </div>
+            <div className="form-group inventory-filter-item">
+              <label>Desde</label>
+              <input className="form-control" type="date" value={from}
+                     max={to} onChange={e => setFrom(e.target.value)} />
+            </div>
+            <div className="form-group inventory-filter-item">
+              <label>Hasta</label>
+              <input className="form-control" type="date" value={to}
+                     min={from} onChange={e => setTo(e.target.value)} />
+            </div>
           </div>
           {selectedHotel > 0 && (
             <button className="btn btn-primary" onClick={() => setShowModal(true)}>
@@ -147,61 +224,138 @@ export default function AvailabilityPage() {
       {loading ? (
         <div className="loading">Cargando...</div>
       ) : selectedHotel === 0 ? (
-        <div className="card"><div className="empty-state"><p>Selecciona un hotel para ver la disponibilidad</p></div></div>
+        <div className="card"><div className="empty-state"><p>Selecciona un hotel para ver el inventario</p></div></div>
+      ) : loadError ? (
+        <div className="card"><div className="empty-state"><p>{loadError}</p></div></div>
       ) : (
         <>
+          <div className="stats-grid">
+            <div className="stat-card">
+              <div className="stat-icon green"><Boxes size={24} /></div>
+              <div className="stat-info">
+                <h4>{totalToday}</h4>
+                <p>Inventario disponible hoy</p>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon blue"><CalendarDays size={24} /></div>
+              <div className="stat-info">
+                <h4>{todayAvailabilityPct.toFixed(1)}%</h4>
+                <p>Indice de disponibilidad hoy</p>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon yellow"><AlertTriangle size={24} /></div>
+              <div className="stat-info">
+                <h4>{lowSlots}</h4>
+                <p>Slots en nivel bajo (1-3)</p>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon red"><Ban size={24} /></div>
+              <div className="stat-info">
+                <h4>{soldOutSlots}</h4>
+                <p>Slots agotados (0)</p>
+              </div>
+            </div>
+          </div>
+
           {chartData.length > 0 && (
             <div className="card" style={{ marginBottom: 24 }}>
               <div className="card-header">
-                <h3>Vista de inventario - Proximos 30 dias</h3>
+                <h3>Indice de inventario disponible (%)</h3>
               </div>
               <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={chartData}>
+                <AreaChart data={chartPercentData}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" fontSize={11} tickFormatter={v => v.substring(5)} />
-                  <YAxis />
-                  <Tooltip labelFormatter={v => `Fecha: ${v}`} />
-                  <Bar dataKey="rooms" name="Habitaciones disponibles" fill="#059669" radius={[2, 2, 0, 0]} />
-                </BarChart>
+                  <XAxis dataKey="date" fontSize={11} tickFormatter={formatDateShort} />
+                  <YAxis domain={[0, 100]} tickFormatter={v => `${v}%`} />
+                  <Tooltip
+                    labelFormatter={value => `Fecha: ${value}`}
+                    formatter={(value, name, payload) => {
+                      if (name === 'availabilityPct') {
+                        return [`${value}%`, 'Disponibilidad relativa']
+                      }
+                      return [String(value), 'Habitaciones disponibles']
+                    }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="availabilityPct"
+                    name="availabilityPct"
+                    stroke="#1a56db"
+                    fill="#e8eefb"
+                    strokeWidth={2}
+                  />
+                </AreaChart>
               </ResponsiveContainer>
+              <p className="inventory-subtle" style={{ marginTop: 10 }}>
+                Porcentaje calculado contra el maximo inventario diario observado en el rango seleccionado ({maxDailyInventory} habitaciones).
+              </p>
             </div>
           )}
 
           <div className="card">
-            <div className="card-header">
-              <h3>Detalle por tipo de habitacion</h3>
+            <div className="inventory-matrix-header">
+              <h3>Matriz de inventario por tipo y fecha</h3>
+              <div className="inventory-legend">
+                <span className="badge confirmed">Alto (4+)</span>
+                <span className="badge pending">Bajo (1-3)</span>
+                <span className="badge cancelled">Agotado (0)</span>
+              </div>
             </div>
+
             {roomTypes.length === 0 ? (
               <div className="empty-state"><p>Este hotel no tiene tipos de habitacion</p></div>
+            ) : totalSlots === 0 ? (
+              <div className="empty-state"><p>Sin datos de inventario para el rango seleccionado</p></div>
             ) : (
               <div className="table-container">
                 <table>
                   <thead>
                     <tr>
                       <th>Tipo</th>
-                      <th>Fecha</th>
-                      <th>Hab. Disponibles</th>
+                      {dateColumns.map(date => <th key={date}>{formatDateShort(date)}</th>)}
+                      <th>Total periodo</th>
+                      <th>Prom./dia</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {availability.length === 0 ? (
-                      <tr><td colSpan={3} style={{ textAlign: 'center', padding: 24, color: '#9ca3af' }}>Sin datos de disponibilidad registrados</td></tr>
-                    ) : (
-                      availability.map(a => {
-                        const rt = roomTypes.find(r => r.id === a.roomTypeId)
-                        return (
-                          <tr key={a.id}>
-                            <td><strong>{rt?.name || '-'}</strong></td>
-                            <td>{a.date}</td>
-                            <td>
-                              <span className={`badge ${a.availableRooms > 3 ? 'confirmed' : a.availableRooms > 0 ? 'pending' : 'cancelled'}`}>
-                                {a.availableRooms}
-                              </span>
-                            </td>
-                          </tr>
-                        )
-                      })
-                    )}
+                    {roomTypes.map(rt => {
+                      const values = roomTypeDateMap.get(rt.id) || new Map<string, number>()
+                      const total = dateColumns.reduce((sum, date) => sum + (values.get(date) || 0), 0)
+                      const average = dateColumns.length > 0 ? total / dateColumns.length : 0
+
+                      return (
+                        <tr key={rt.id}>
+                          <td>
+                            <strong>{rt.name}</strong>
+                            <div className="inventory-subtle">Capacidad: {rt.capacity}</div>
+                          </td>
+                          {dateColumns.map(date => {
+                            const rooms = values.get(date)
+                            if (rooms === undefined) {
+                              return <td key={date}><span className="inventory-subtle">-</span></td>
+                            }
+
+                            const level = rooms === 0 ? 'cancelled' : rooms <= 3 ? 'pending' : 'confirmed'
+                            return (
+                              <td key={date}>
+                                <span className={`badge ${level}`}>{rooms}</span>
+                              </td>
+                            )
+                          })}
+                          <td><strong>{total}</strong></td>
+                          <td>{average.toFixed(1)}</td>
+                        </tr>
+                      )
+                    })}
+                    <tr>
+                      <td><strong>Total hotel</strong></td>
+                      {dateColumns.map(date => <td key={date}><strong>{totalByDate.get(date) || 0}</strong></td>)}
+                      <td><strong>{chartData.reduce((sum, item) => sum + item.rooms, 0)}</strong></td>
+                      <td><strong>{averagePerDay.toFixed(1)}</strong></td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
